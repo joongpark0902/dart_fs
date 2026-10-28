@@ -1,0 +1,34 @@
+"""excel/vba/DartFs.bas 를 CP949·CRLF 로 생성한다(VBE Import 는 ANSI 코드페이지로 읽음 — UTF-8 저장 금지)."""
+import os
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT = os.path.join(HERE, "excel", "vba", "DartFs.bas")
+
+SRC = '''Attribute VB_Name = "DartFs"
+Option Explicit
+
+Public Sub UpdateData()
+    Dim py As String, sc As String, cmd As String
+    On Error GoTo Fail
+    py = ThisWorkbook.Names("cfg_python").RefersToRange.Value
+    sc = ThisWorkbook.Names("cfg_script").RefersToRange.Value
+    ThisWorkbook.Save
+    ThisWorkbook.Names("cfg_status").RefersToRange.Value = "업데이트 실행 중... " & Format(Now, "hh:nn:ss")
+    cmd = """" & py & """ """ & sc & """ --workbook """ & ThisWorkbook.FullName & """"
+    Shell cmd, vbMinimizedNoFocus
+    Exit Sub
+Fail:
+    ThisWorkbook.Names("cfg_status").RefersToRange.Value = "실행 실패: " & Err.Description
+End Sub
+'''
+
+
+def main():
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    with open(OUT, "w", encoding="cp949", newline="\r\n") as f:
+        f.write(SRC)
+    return OUT
+
+
+if __name__ == "__main__":
+    print(main())

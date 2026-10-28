@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DART 재무제표</title>
+<script>
+try {
+  const theme = localStorage.getItem('dart_fs_theme');
+  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+} catch (e) { /* Storage may be unavailable; use the system theme. */ }
+</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+:root{
+  --bg:#f4f5f7; --surface:#ffffff; --surface-2:#f1f3f6; --fg:#15181e; --fg-2:#4b5260; --fg-3:#7b8290;
+  --line:#e3e6eb; --line-2:#eef0f3; --accent:#2f5fd6; --accent-soft:#e8eefc; --accent-fg:#ffffff;
+  --danger:#d3382a; --danger-soft:#fdecea; --ok:#1c8a5a; --ok-soft:#e4f5ec;
+  --font:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
+  --ring:0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#111317; --surface:#191c22; --surface-2:#22262e; --fg:#eceef2; --fg-2:#b4bac6; --fg-3:#7b8290;
+  --line:#2b3039; --line-2:#22262e; --accent:#7ea2ff; --accent-soft:#1f2a45; --accent-fg:#0b1430;
+  --danger:#ff8a7a; --danger-soft:#3a1f1c; --ok:#4fd095; --ok-soft:#16302a; } }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit} button{cursor:pointer}
+h1,h3{margin:0}
+.hidden{display:none !important}
+:where(button,select,input,textarea,[tabindex]):focus-visible{outline:none;box-shadow:var(--ring)}
+
+/* 상단바 */
+.topbar{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);padding:0 16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0 18px;min-height:52px}
+.brand{display:flex;align-items:baseline;gap:10px;padding-block:12px}
+.brand h1{font-size:16px;font-weight:700;letter-spacing:-.02em}
+.brand .sub{font-size:12px;color:var(--fg-3)}
+.brand .sub::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:5px;vertical-align:1px}
+.brand .sub.nokey::before{background:var(--danger)}
+.tabs{display:flex;gap:2px;align-self:stretch}
+.tabs button{border:0;background:transparent;padding:0 10px;color:var(--fg-3);font-weight:500;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;border-radius:0}
+.tabs button:hover{color:var(--fg)}
+.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent);font-weight:700}
+.tabs button:focus-visible{box-shadow:none;outline:2px solid var(--accent);outline-offset:-2px;border-radius:6px}
+
+/* 본문 */
+main{max-width:1200px;margin:0 auto;padding:18px 16px 48px;display:grid;gap:16px}
+section[role=tabpanel]{display:grid;gap:16px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0}
+.panel h3{font-size:14px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px;letter-spacing:-.01em}
+.panel h3 .cnt{font-weight:400;color:var(--fg-3);font-size:12px}
+.row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 12px;margin-bottom:10px}
+.row:last-child{margin-bottom:0}
+.note{font-size:12px;color:var(--fg-3)}
+
+/* 버튼 */
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 12px;font-weight:500;font-size:13px;line-height:20px;color:var(--fg);transition:background .12s,border-color .12s}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.primary:hover{background:color-mix(in srgb, var(--accent) 88%, black)}
+.btn.danger{color:var(--danger)}
+.btn.danger:hover{background:var(--danger-soft)}
+.btn:disabled{opacity:.5;cursor:default}
+
+/* 입력 */
+.field{display:grid;gap:5px;min-width:0}
+.field label,.field .lbl{font-size:12px;color:var(--fg-2);font-weight:500}
+.field input,.field select{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--surface);width:100%;min-width:0;transition:border-color .12s}
+.field input:hover,.field select:hover{border-color:var(--fg-3)}
+.field input:focus-visible,.field select:focus-visible{border-color:var(--accent)}
+.grow{flex:1 1 280px}
+.w-date{flex:0 1 160px} .w-year{flex:0 1 100px} .w-name{flex:0 1 160px} .w-sel{flex:0 1 180px}
+
+/* 세그먼트 · 칩 · 알약 */
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg label{position:relative;border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;line-height:18px;color:var(--fg-2)}
+.seg label:hover{background:var(--surface-2)}
+.seg input{position:absolute;opacity:0;width:0;height:0}
+.seg label:has(input:checked){background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb, var(--accent) 35%, transparent);font-weight:500}
+.seg label:has(input:focus-visible){box-shadow:var(--ring)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{border:1px solid transparent;background:var(--surface);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--fg-2);display:inline-flex;align-items:center;gap:6px;line-height:16px;box-shadow:inset 0 0 0 1px var(--line)}
+.chip:hover{background:var(--surface-2)}
+.chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);font-weight:500}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:500;background:var(--surface-2);color:var(--fg-2);line-height:18px;white-space:nowrap}
+.pill.acc{background:var(--accent-soft);color:var(--accent)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.bad{background:var(--danger-soft);color:var(--danger)}
+
+/* 표 */
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-size:11px;color:var(--fg-3);font-weight:500;letter-spacing:.04em;white-space:nowrap;border-bottom-color:var(--line)}
+td.num,th.num{text-align:right}
+tr.clickable{cursor:pointer}
+tr.clickable:hover td{background:var(--accent-soft)}
+tr.sel td{background:var(--accent-soft)}
+tr.sel td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+.tablewrap table{min-width:560px}
+.base{color:var(--accent);font-weight:500;font-size:12px;margin-left:4px}
+.empty{color:var(--fg-3);font-size:13px;padding:14px 0;text-align:center}
+
+/* 로그 */
+pre.log{background:var(--surface-2);color:var(--fg-2);font:12px/1.55 Consolas,"D2Coding",monospace;border-radius:8px;height:240px;overflow:auto;padding:10px 12px;margin:10px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.result{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--fg-2);min-width:0;overflow-wrap:anywhere}
+
+@media (max-width:720px){
+  .topbar{padding:0 12px}
+  .row > .field{flex:1 1 100%}
+  .row > .w-year{flex:1 1 calc(50% - 6px)}
+}
+
+/* AuditCalendar reference: quiet toolbar, wide work column and light tables. */
+:root{--surface-2:#f0f2f5;--fg-3:#8a909c}
+.topbar{justify-content:flex-start;padding-inline:24px;gap:0 24px}
+.brand{flex-shrink:0}
+.server-state{margin-left:auto;font-size:11px;color:var(--fg-3);padding-block:8px;overflow-wrap:anywhere}
+.server-state::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:1px}
+.server-state.nokey::before{background:var(--danger)}
+main{max-width:1360px;padding:26px 24px 48px}
+.page-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:4px}
+.page-heading h2{font-size:22px;letter-spacing:-.03em;line-height:1.5;margin:0;font-weight:700}
+.page-heading p{font-size:12px;color:var(--fg-3);margin:5px 0 0}
+.page-label{color:var(--fg-3);font-size:11px;letter-spacing:.05em;border:1px solid var(--line);border-radius:6px;padding:4px 8px;white-space:nowrap}
+.setup-grid{display:grid;grid-template-columns:minmax(260px,.85fr) minmax(0,1.65fr);gap:16px;align-items:stretch}
+.panel{padding:18px 20px}
+.panel h3{margin-bottom:16px;gap:8px}
+.step-no{font-size:11px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--surface-2);color:var(--fg-2);flex-shrink:0}
+.row{gap:10px 14px;margin-bottom:14px}
+.setup-grid .grow{flex:1 1 140px}
+.setup-grid .w-date{flex:1.3 1 140px}
+.setup-grid .w-year{flex:1 1 85px}
+.selected-company{display:flex;align-items:baseline;gap:10px;margin:-2px 0 16px;padding-bottom:12px;border-bottom:1px solid var(--line-2);font-size:12px;overflow-wrap:anywhere}
+.selection-label{color:var(--fg-3);white-space:nowrap}
+#picked{font-weight:500}
+#plan{margin-left:auto}
+#corpsWrap{max-height:216px;overflow:auto}
+#corpsWrap table{min-width:330px}
+@media(max-width:1200px){
+  #corpsWrap table{min-width:0;table-layout:fixed}
+  #corpsWrap th:first-child{width:65%}
+  #corpsWrap th:nth-child(3),#corpsWrap td:nth-child(3){display:none}
+  #corpsWrap th,#corpsWrap td{padding-inline:8px;overflow-wrap:anywhere}
+}
+#corpsEmpty{padding:32px 8px 24px}
+.reports-panel .cnt{margin-left:auto}
+#planOut:empty{display:none}
+#planOut:not(:empty){margin-bottom:12px;line-height:1.7}
+#reportsEmpty,#notesEmpty{padding:24px 12px;background:var(--surface-2);border-radius:8px;font-size:12px}
+#reportsWrap{max-height:320px;overflow:auto}
+#notesWrap{max-height:480px;overflow:auto}
+.tablewrap th{background:var(--surface);position:sticky;top:0;z-index:1}
+.tablewrap td{padding-block:10px}
+#notesWrap th:first-child{width:34px}
+input[type=checkbox]{accent-color:var(--accent)}
+.section-description{font-size:12px;color:var(--fg-3);margin:-6px 0 16px}
+#build{padding:9px 20px}
+.log-disclosure{margin-top:16px;border-top:1px solid var(--line-2);padding-top:12px}
+.log-disclosure summary{cursor:pointer;font-size:12px;color:var(--fg-3);width:fit-content;padding:2px 0}
+.log-disclosure summary:hover{color:var(--fg)}
+pre.log{height:180px}
+pre.log:empty::after{content:"작업을 시작하면 진행 내역이 표시됩니다.";color:var(--fg-3)}
+#tab-settings,#tab-update{max-width:960px;width:100%;margin-inline:auto}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--surface-2:#22262e;--fg-3:#7b8290}}
+@media(max-width:1080px){.server-state{flex-basis:100%;margin-left:0;padding:0 0 9px}.topbar{gap:0 20px}.brand{padding-block:10px}.tabs{min-height:46px}.row{gap:10px}}
+@media(max-width:780px){.setup-grid{grid-template-columns:1fr}.topbar{padding-inline:16px}main{padding:20px 16px 36px}.panel{padding:16px 18px}.page-heading h2{font-size:20px}.reports-panel .cnt{font-size:11px}.row>.w-date{flex:1 1 100%}.row>.w-year{flex:1 1 calc(50% - 6px)}}
+@media(max-width:420px){.topbar{gap:0 8px}.brand h1{font-size:14px}.tabs button{padding-inline:8px;font-size:13px}.panel{padding:16px}.reports-panel h3{flex-wrap:wrap}.reports-panel .cnt{margin-left:0;width:100%}.page-label{display:none}}
+:root{color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#111317;--surface:#191c22;--surface-2:#22262e;--fg:#eceef2;--fg-2:#b4bac6;--fg-3:#7b8290;
+  --line:#2b3039;--line-2:#22262e;--accent:#7ea2ff;--accent-soft:#1f2a45;--accent-fg:#0b1430;
+  --danger:#ff8a7a;--danger-soft:#3a1f1c;--ok:#4fd095;--ok-soft:#16302a;
+}
+.theme-toggle{margin-left:auto;white-space:nowrap;font-size:12px;padding:4px 10px}
+.server-state{margin-left:0}
+
+/* 파일로 생성 */
+#tab-file table select,#tab-file table input{border:1px solid var(--line);border-radius:6px;padding:3px 6px;background:var(--surface);font-size:12px;min-width:0}
+#tab-file table select:hover,#tab-file table input:hover{border-color:var(--fg-3)}
+#tab-file .seg.sm label{padding:2px 9px;font-size:12px}
+#tab-file td .note{margin-top:3px;overflow-wrap:anywhere}
+#fFilesWrap table{min-width:720px}
+#fTablesWrap table{min-width:980px}
+#fTablesWrap{max-height:560px;overflow:auto}
+#fNotesWrap{max-height:320px;overflow:auto}
+#fNotesWrap th:first-child{width:34px}
+.pcol{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.pcol:last-child{margin-bottom:0}
+.pcol span{font-size:11px;color:var(--fg-3);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+#fScanOut:empty{display:none}
+
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><h1>DART 재무제표</h1></div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="build" aria-selected="true">생성</button>
+    <button role="tab" data-tab="file" aria-selected="false">파일로 생성</button>
+    <button role="tab" data-tab="update" aria-selected="false">업데이트</button>
+    <button role="tab" data-tab="settings" aria-selected="false">설정</button>
+  </nav>
+  <button class="btn theme-toggle" id="themeToggle" type="button" aria-label="다크모드" aria-pressed="false">다크모드 켜기</button>
+  <span class="server-state nokey" id="keyState">인증키 확인 중</span>
+</header>
+
+<main>
+<!-- 탭: 생성 -->
+<section role="tabpanel" id="tab-build">
+  <div class="page-heading"><div><h2>재무제표 수집</h2><p>회사와 기간을 선택하고, 필요한 주석을 엑셀로 모으세요.</p></div><span class="page-label">OpenDART</span></div>
+  <div class="setup-grid">
+  <div class="panel">
+    <h3><span class="step-no">1</span> 회사 선택 <span class="cnt" id="corpCnt"></span></h3>
+    <div class="row">
+      <div class="field grow"><label for="q">회사 검색</label><input id="q" placeholder="회사명 또는 종목코드"></div>
+      <button class="btn primary" id="search">검색</button>
+    </div>
+    <div class="tablewrap hidden" id="corpsWrap"><table id="corps"><thead><tr><th>회사명</th><th>종목코드</th><th>corp_code</th></tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="corpsEmpty">회사를 먼저 검색하세요</div>
+  </div>
+
+  <div class="panel">
+    <h3><span class="step-no">2</span> 수집 조건</h3>
+    <div class="selected-company"><span class="selection-label">선택 회사</span><span id="picked">선택 없음</span></div>
+    <div class="row">
+      <div class="field w-date"><label for="asof">기준일</label><input id="asof" type="date"></div>
+      <div class="field w-year"><label for="y1">시작 연도</label><input id="y1" type="number"></div>
+      <div class="field w-year"><label for="y2">끝 연도</label><input id="y2" type="number"></div>
+    </div>
+    <div class="row">
+      <div class="field"><span class="lbl">기간</span><div class="seg">
+        <label><input type="radio" name="half" value="0" checked>연간</label>
+        <label><input type="radio" name="half" value="1">반기 포함</label></div></div>
+      <div class="field"><span class="lbl">재무제표</span><div class="seg">
+        <label><input type="checkbox" id="cfs">연결</label>
+        <label><input type="checkbox" id="ofs" checked>별도</label></div></div>
+      <div class="field"><span class="lbl">mFS 단위</span><div class="seg">
+        <label title="공시 재무상태표 단위를 그대로 씁니다(천원 공시면 천원). 엑셀 설정 시트에서 바로 바꿀 수 있습니다."><input type="radio" name="unit" value="0" checked>자동(공시 단위)</label>
+        <label><input type="radio" name="unit" value="1">원</label>
+        <label><input type="radio" name="unit" value="1000">천원</label>
+        <label><input type="radio" name="unit" value="1000000">백만원</label></div></div>
+      <button class="btn primary" id="plan">보고서 조회</button>
+    </div>
+  </div>
+  </div>
+
+  <div class="panel reports-panel">
+    <h3>수집할 보고서 <span class="cnt">공시 목록과 기준 보고서 확인</span></h3>
+    <div class="note" id="planOut"></div>
+    <div class="tablewrap hidden" id="reportsWrap"><table id="reports"><thead><tr><th>기간말</th><th>보고서</th><th>접수번호</th><th>접수일</th><th>정정</th><th>구분</th></tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="reportsEmpty">회사를 고른 뒤 [보고서 조회]를 누르세요</div>
+  </div>
+
+  <div class="panel">
+    <h3><span class="step-no">3</span> 주석 선택 <span class="cnt" id="tocCnt"></span></h3>
+    <div class="row">
+      <button class="btn" id="toc">목차 불러오기</button>
+      <span class="note" id="tocBase"></span>
+    </div>
+    <div class="row">
+      <div class="chips">
+        <button class="chip" id="recOnly" aria-pressed="false">★ 추천만</button>
+        <button class="chip" id="allOn" aria-pressed="false">전체</button>
+        <button class="chip" id="allOff" aria-pressed="false">해제</button>
+      </div>
+      <div class="field w-sel"><label for="preset">프리셋</label><select id="preset"></select></div>
+      <div class="field w-name"><label for="presetName">프리셋 이름</label><input id="presetName" placeholder="이름"></div>
+      <button class="btn" id="savePreset">저장</button>
+    </div>
+    <div class="tablewrap hidden" id="notesWrap"><table id="notes"><thead><tr><th></th><th class="num">번호</th><th>제목</th><th>주제</th><th>★</th><th class="num">표 수</th><th>배치 시트</th></tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="notesEmpty">[목차 불러오기]로 기준 보고서의 주석 목차를 가져오세요</div>
+  </div>
+
+  <div class="panel">
+    <h3><span class="step-no">4</span> 엑셀 생성</h3>
+    <p class="section-description">선택한 재무제표와 주석을 하나의 엑셀 파일로 만듭니다.</p>
+    <div class="row" style="align-items:center">
+      <button class="btn primary" id="build">엑셀 생성</button>
+      <span class="result" id="result"></span>
+      <button class="btn hidden" id="openFolder">폴더 열기</button>
+    </div>
+    <details class="log-disclosure"><summary>진행 로그</summary><pre class="log" id="log" aria-live="polite"></pre></details>
+  </div>
+</section>
+
+<!-- 탭: 파일로 생성 -->
+<section role="tabpanel" id="tab-file" class="hidden">
+  <div class="page-heading"><div><h2>파일로 생성</h2><p>회사가 준 엑셀 재무제표를 읽어 같은 모양의 엑셀을 만듭니다. DART 조회와 인증키가 필요 없습니다.</p></div><span class="page-label">엑셀 입력</span></div>
+  <div class="setup-grid">
+  <div class="panel">
+    <h3><span class="step-no">1</span> 회사</h3>
+    <div class="row">
+      <div class="field grow"><label for="fCorp">회사명</label><input id="fCorp" placeholder="산출물 폴더·파일 이름에 쓰입니다" autocomplete="off"></div>
+    </div>
+    <div class="note">corp_code 는 FILE:회사명 으로 저장됩니다. 입력 파일은 경로만 설정에 저장하고 내용은 서버에 남기지 않습니다.</div>
+  </div>
+
+  <div class="panel">
+    <h3><span class="step-no">2</span> 파일 <span class="cnt" id="fFileCnt"></span></h3>
+    <div class="row">
+      <button class="btn primary" id="fPick">파일 선택</button>
+      <div class="field grow"><label for="fPath">경로 직접 입력</label><input id="fPath" placeholder="C:\...\재무제표.xlsx"></div>
+      <button class="btn" id="fAdd">경로 추가</button>
+    </div>
+    <div class="tablewrap hidden" id="fFilesWrap"><table id="fFiles"><thead><tr><th>파일</th><th>결산일</th><th>기간</th><th>재무제표</th><th title="시트의 '(단위: 천원)' 문구가 우선합니다. 여기 고른 단위는 그 문구가 없는 표에만 씁니다.">단위(문구 없을 때)</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="fFilesEmpty">[파일 선택] 또는 경로를 붙여 넣고 [경로 추가]</div>
+  </div>
+  </div>
+
+  <div class="panel">
+    <h3><span class="step-no">3</span> 인식 결과 <span class="cnt" id="fScanCnt"></span></h3>
+    <p class="section-description">자동으로 인식한 표입니다. 유형·머리글 행·라벨 열·기간 열·단위를 고치면 설정에 저장되어 [업데이트] 때도 그대로 쓰입니다. 결산일·기간을 바꾸면 다시 인식합니다.</p>
+    <div class="row">
+      <button class="btn" id="fScan">인식</button>
+      <span class="note" id="fScanOut"></span>
+    </div>
+    <div class="tablewrap hidden" id="fTablesWrap"><table id="fTables"><thead><tr><th>파일</th><th>시트</th><th>표 제목</th><th>유형</th><th class="num">머리글 행</th><th>라벨 열</th><th>기간 열</th><th>단위</th><th>신뢰도</th></tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="fTablesEmpty">파일을 추가하면 표를 인식합니다</div>
+  </div>
+
+  <div class="panel">
+    <h3><span class="step-no">4</span> 주석 <span class="cnt" id="fNoteCnt"></span></h3>
+    <div class="tablewrap hidden" id="fNotesWrap"><table id="fNotes"><thead><tr><th></th><th class="num">번호</th><th>제목</th><th>파일 · 시트</th><th class="num">표 수</th></tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="fNotesEmpty">인식된 주석 표가 없습니다(연간 파일의 주석 표만 씁니다)</div>
+  </div>
+
+  <div class="panel">
+    <h3><span class="step-no">5</span> 엑셀 생성</h3>
+    <div class="row">
+      <div class="field w-date"><label for="fAsof">기준일</label><input id="fAsof" type="date"></div>
+      <div class="field"><span class="lbl">mFS 단위</span><div class="seg">
+        <label title="파일 표의 단위를 그대로 씁니다. 엑셀 설정 시트에서 바로 바꿀 수 있습니다."><input type="radio" name="funit" value="0" checked>자동(파일 단위)</label>
+        <label><input type="radio" name="funit" value="1">원</label>
+        <label><input type="radio" name="funit" value="1000">천원</label>
+        <label><input type="radio" name="funit" value="1000000">백만원</label></div></div>
+    </div>
+    <div class="row" style="align-items:center">
+      <button class="btn primary" id="fBuild">엑셀 생성</button>
+      <span class="result" id="fResult"></span>
+      <button class="btn hidden" id="fOpenFolder">폴더 열기</button>
+    </div>
+    <details class="log-disclosure"><summary>진행 로그</summary><pre class="log" id="fLog" aria-live="polite"></pre></details>
+  </div>
+</section>
+
+<!-- 탭: 업데이트 -->
+<section role="tabpanel" id="tab-update" class="hidden">
+  <div class="panel">
+    <h3>기존 파일 업데이트</h3>
+    <p class="section-description">기존 엑셀 파일에 최신 공시를 반영합니다.</p>
+    <div class="row">
+      <div class="field grow"><label for="wbpath">파일 경로</label><input id="wbpath" placeholder="C:\...\회사_2026-10-26.xlsm"></div>
+      <button class="btn primary" id="refresh">업데이트</button>
+    </div>
+    <div class="note">Excel에 열려 있으면 파일 안의 [업데이트] 버튼을 쓰세요.</div>
+    <span class="result" id="refreshResult"></span>
+    <details class="log-disclosure"><summary>진행 로그</summary><pre class="log" id="log2" aria-live="polite"></pre></details>
+  </div>
+</section>
+
+<!-- 탭: 설정 -->
+<section role="tabpanel" id="tab-settings" class="hidden">
+  <div class="panel">
+    <h3>설정</h3>
+    <div class="row">
+      <div class="field grow"><label for="key">DART 인증키</label><input id="key" type="password" placeholder="config.txt에 저장됩니다" autocomplete="off"></div>
+      <button class="btn primary" id="saveKey">저장</button>
+    </div>
+    <div class="row">
+      <div class="field grow"><span class="lbl">파이썬 경로 (읽기 전용 — config.txt에서만 변경)</span><div class="note" id="pyPath">-</div></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const J = (u, b) => fetch(u, b ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(b)} : {})
+  .then(async r => { const j = await r.json(); if (!r.ok || (j && j.error)) throw new Error((j && j.error) || r.status); return j; });
+let corp = null, toc = [], lastPath = null;
+
+/* 탭 */
+function showTab(t){
+  document.querySelectorAll('.tabs [role=tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+  document.querySelectorAll('section[role=tabpanel]').forEach(s => s.classList.toggle('hidden', s.id !== 'tab-' + t));
+}
+document.querySelectorAll('.tabs [role=tab]').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+/* 기본값 */
+const today = new Date();
+$('#asof').value = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+$('#y2').value = today.getFullYear() - 1; $('#y1').value = today.getFullYear() - 5;
+
+function cfg(){
+  const fs = []; if ($('#cfs').checked) fs.push('CFS'); if ($('#ofs').checked) fs.push('OFS');
+  return {corp_code: corp.corp_code, corp_name: corp.corp_name, as_of: $('#asof').value,
+          start_year: +$('#y1').value, end_year: +$('#y2').value,
+          include_half: document.querySelector('input[name=half]:checked').value === '1', fs_divs: fs,
+          unit_display: +document.querySelector('input[name=unit]:checked').value, preset: $('#preset').value || 'default'};
+}
+function noteInclude(){ const o = {}; toc.forEach(e => { o[e.title_norm] = !!e.include; }); return o; }
+function logTo(id, m){ const p = $(id); p.textContent += m + '\n'; p.scrollTop = p.scrollHeight; }
+function show(wrap, empty, has){ $(wrap).classList.toggle('hidden', !has); $(empty).classList.toggle('hidden', has); }
+function needCorp(){ if (!corp) { alert('회사를 먼저 선택하세요'); return false; } return true; }
+
+/* 설정 */
+async function loadConfig(){
+  try {
+    const c = await J('/api/config');
+    const s = $('#keyState'); s.textContent = c.has_key ? '인증키 저장됨' : '인증키 없음'; s.classList.toggle('nokey', !c.has_key);
+    if (c.server_started) s.textContent += ' · 서버 ' + c.server_started.slice(11) + ' 시작 · 코드 ' + c.code_version;
+    $('#pyPath').textContent = c.python || '-';
+  } catch (e) { $('#keyState').textContent = '서버 연결 실패'; }
+}
+$('#saveKey').onclick = async () => {
+  const k = $('#key').value.trim(); if (!k) return alert('인증키를 입력하세요');
+  try { await J('/api/config', {api_key: k}); $('#key').value = ''; await loadConfig(); } catch (e) { alert(e.message); }
+};
+
+/* ① 회사 */
+async function search(){
+  const q = $('#q').value.trim(); if (!q) return;
+  const btn = $('#search'); btn.disabled = true;
+  try {
+    const r = await J('/api/search?q=' + encodeURIComponent(q));
+    const tb = $('#corps tbody'); tb.innerHTML = '';
+    r.forEach(c => {
+      const tr = document.createElement('tr'); tr.className = 'clickable'; tr.tabIndex = 0;
+      tr.innerHTML = `<td>${esc(c.corp_name)}</td><td>${esc(c.stock_code)}</td><td>${esc(c.corp_code)}</td>`;
+      tr.onclick = () => { corp = c; [...tb.children].forEach(x => x.classList.remove('sel')); tr.classList.add('sel');
+        $('#picked').textContent = `${c.corp_name} (${c.corp_code})`; };
+      tr.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tr.click(); } };
+      tb.appendChild(tr);
+    });
+    $('#corpCnt').textContent = r.length + '건';
+    show('#corpsWrap', '#corpsEmpty', r.length > 0);
+    if (!r.length) $('#corpsEmpty').textContent = '검색 결과가 없습니다';
+  } catch (e) { alert(e.message); } finally { btn.disabled = false; }
+}
+$('#search').onclick = search;
+$('#q').onkeydown = e => { if (e.key === 'Enter') search(); };
+
+/* ② 조건 · 보고서 */
+$('#plan').onclick = async () => {
+  if (!needCorp()) return;
+  const btn = $('#plan'); btn.disabled = true;
+  try {
+    const r = await J('/api/plan', cfg());
+    $('#planOut').textContent = '기간: ' + (r.periods.join(', ') || '없음') + (r.log.length ? ' · ' + r.log.join(' / ') : '');
+    const tb = $('#reports tbody'); tb.innerHTML = '';
+    r.reports.forEach(x => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${esc(x.period_end)}</td><td>${esc(x.report_nm)}${x.rcept_no === r.base_report ? '<span class="base">(기준)</span>' : ''}</td>`
+        + `<td>${esc(x.rcept_no)}</td><td>${esc(x.rcept_dt)}</td><td>${x.corrected ? '<span class="pill acc">정정</span>' : ''}</td>`
+        + `<td>${x.fs_divs.map(d => d === 'CFS' ? '연결' : '별도').join('/')}</td>`;
+      tb.appendChild(tr);
+    });
+    show('#reportsWrap', '#reportsEmpty', r.reports.length > 0);
+    if (!r.reports.length) $('#reportsEmpty').textContent = '조건에 맞는 보고서가 없습니다';
+  } catch (e) { alert(e.message); } finally { btn.disabled = false; }
+};
+
+/* ③ 주석 */
+function setChip(id){ ['#recOnly', '#allOn', '#allOff'].forEach(c => $(c).setAttribute('aria-pressed', String(c === id))); }
+function renderToc(){
+  const tb = $('#notes tbody'); tb.innerHTML = '';
+  toc.forEach((e, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input type="checkbox" ${e.include ? 'checked' : ''} aria-label="포함"></td><td class="num">${esc(e.no)}</td><td>${esc(e.title)}</td>`
+      + `<td>${esc(e.topic)}</td><td>${e.recommended ? '★' : ''}</td><td class="num">${esc(e.table_count)}</td><td>${esc(e.sheet)}</td>`;
+    tr.querySelector('input').onchange = ev => { toc[i].include = ev.target.checked; setChip(null); count(); };
+    tb.appendChild(tr);
+  });
+  show('#notesWrap', '#notesEmpty', toc.length > 0); count();
+}
+function count(){ $('#tocCnt').textContent = toc.length ? `${toc.length}개 · 선택 ${toc.filter(e => e.include).length}` : ''; }
+$('#toc').onclick = async () => {
+  if (!needCorp()) return;
+  const btn = $('#toc'); btn.disabled = true; $('#tocBase').textContent = '불러오는 중…';
+  try {
+    const r = await J('/api/toc', cfg());
+    $('#tocBase').textContent = `기준 보고서: ${r.base.report_nm} (${r.base.rcept_no})`;
+    toc = r.entries.map(e => ({...e, include: true})); setChip('#allOn'); renderToc();
+  } catch (e) { $('#tocBase').textContent = ''; alert(e.message); } finally { btn.disabled = false; }
+};
+$('#recOnly').onclick = () => { toc.forEach(e => e.include = e.recommended); setChip('#recOnly'); renderToc(); };
+$('#allOn').onclick = () => { toc.forEach(e => e.include = true); setChip('#allOn'); renderToc(); };
+$('#allOff').onclick = () => { toc.forEach(e => e.include = false); setChip('#allOff'); renderToc(); };
+
+async function loadPresets(){
+  try {
+    const p = await J('/api/presets'); const s = $('#preset');
+    s.innerHTML = '<option value="">(선택 안 함)</option>';
+    Object.keys(p).forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = k; o.dataset.v = JSON.stringify(p[k]); s.appendChild(o); });
+  } catch (e) { /* 프리셋 없음 */ }
+}
+$('#preset').onchange = () => {
+  const o = $('#preset').selectedOptions[0]; if (!o || !o.dataset.v) return;
+  const v = JSON.parse(o.dataset.v);
+  if (v === 'recommended' || (v && v.recommended === true)) toc.forEach(e => e.include = e.recommended);
+  else if (v && typeof v === 'object') toc.forEach(e => { if (e.title_norm in v) e.include = !!v[e.title_norm]; });
+  setChip(null); renderToc();
+};
+$('#savePreset').onclick = async () => {
+  const n = $('#presetName').value.trim(); if (!n) return alert('프리셋 이름을 입력하세요');
+  if (!toc.length) return alert('목차를 먼저 불러오세요');
+  try { await J('/api/presets', {name: n, note_include: noteInclude()}); await loadPresets(); $('#preset').value = n; } catch (e) { alert(e.message); }
+};
+
+/* ④ 생성 · 업데이트 (SSE) */
+function follow(job, logId, onDone, onError){
+  const es = new EventSource('/api/events/' + job);
+  es.onmessage = ev => {
+    const d = JSON.parse(ev.data);
+    if (d.type === 'log') logTo(logId, d.msg);
+    else if (d.type === 'done') { es.close(); onDone(d.result); }
+    else if (d.type === 'error') { es.close(); logTo(logId, '오류: ' + d.msg); onError(d.msg); }
+  };
+  es.onerror = () => { if (es.readyState === EventSource.CLOSED) return; es.close(); onError('연결 끊김'); };
+}
+$('#build').onclick = async () => {
+  if (!needCorp()) return;
+  if (!toc.length && !confirm('주석 목차를 불러오지 않았습니다. 추천 주석만 포함해 생성할까요?')) return;
+  const btn = $('#build'); $('#log').textContent = ''; btn.disabled = true;
+  $('#result').textContent = '생성 중…'; $('#openFolder').classList.add('hidden');
+  const fail = () => { $('#result').innerHTML = '<span class="pill bad">실패</span>'; btn.disabled = false; };
+  try {
+    const r = await J('/api/build', {...cfg(), note_include: toc.length ? noteInclude() : {recommended: true}});
+    follow(r.job, '#log', res => {
+      lastPath = res.path; $('#result').innerHTML = buildResultHtml(res);
+      $('#openFolder').classList.remove('hidden'); btn.disabled = false;
+    }, fail);
+  } catch (e) { alert(e.message); fail(); }
+};
+function buildResultHtml(res){
+  const v = res.verify || {errors: 0, checks: {TRUE: 0, FALSE: 0}};
+  return `<span class="pill ok">TRUE ${esc(v.checks.TRUE)}</span>`
+    + `<span class="pill ${v.checks.FALSE ? 'bad' : ''}">FALSE ${esc(v.checks.FALSE)}</span>`
+    + `<span class="pill ${v.errors ? 'bad' : ''}">오류 ${esc(v.errors)}</span><span>${esc(res.path)}</span>`;
+}
+$('#openFolder').onclick = () => { if (lastPath) J('/api/open-folder', {path: lastPath}).catch(e => alert(e.message)); };
+$('#refresh').onclick = async () => {
+  const p = $('#wbpath').value.trim().replace(/^"|"$/g, ''); if (!p) return alert('파일 경로를 입력하세요');
+  const btn = $('#refresh'); $('#log2').textContent = ''; btn.disabled = true; $('#refreshResult').textContent = '';
+  const fail = () => { $('#refreshResult').innerHTML = '<span class="pill bad">실패</span>'; btn.disabled = false; };
+  try {
+    const r = await J('/api/refresh', {workbook: p});
+    follow(r.job, '#log2', res => { $('#refreshResult').innerHTML = `<span class="pill ok">완료</span><span>${esc(res.path)}</span>`; btn.disabled = false; }, fail);
+  } catch (e) { alert(e.message); fail(); }
+};
+
+/* ⑤ 파일로 생성 — 회사 제시 엑셀(결산일·기간은 파일마다, 인식 결과 수정값은 cfg.layout 으로) */
+const FI = {files: [], scan: [], layout: {}, auto: {}, notes: {}, seq: 0, lastPath: null};
+const UNIT_OPTS = [[0, '자동'], [1, '원'], [1000, '천원'], [1000000, '백만원']];
+const UNIT_NAME = {1: '원', 1000: '천원', 1000000: '백만원'};
+const KIND_OPTS = [['BS', 'BS 재무상태표'], ['IS', 'IS 손익계산서'], ['CIS', 'CIS 포괄손익'], ['CF', 'CF 현금흐름표'], ['SCE', 'SCE 자본변동표'], ['NOTE', '주석'], ['OTHER', '기타']];
+const PK_RE = /^(?:FY(\d{4})|(\d{4})H1)$/;
+$('#fAsof').value = $('#asof').value;
+const baseName = p => String(p).split(/[\\/]/).pop();
+
+function fAddPaths(paths){
+  let added = 0;
+  paths.forEach(p => {
+    p = String(p).trim().replace(/^"|"$/g, '');
+    if (!p || FI.files.some(f => f.path === p)) return;
+    FI.files.push({path: p, basename: baseName(p), period_end: '', kind: 'annual', fs_div: 'OFS', unit: 0}); added++;
+  });
+  if (added) { renderFiles(); fScanAll(); }
+}
+$('#fPick').onclick = async () => {
+  const b = $('#fPick'); b.disabled = true;
+  try { const r = await J('/api/pick-files', {}); fAddPaths(r.paths || []); }   // {paths:[], error} 는 J() 가 throw → catch 에서 알림
+  catch (e) { alert(e.message); } finally { b.disabled = false; }
+};
+$('#fAdd').onclick = () => { const p = $('#fPath').value; if (!p.trim()) return alert('경로를 입력하세요'); fAddPaths([p]); $('#fPath').value = ''; };
+$('#fPath').onkeydown = e => { if (e.key === 'Enter') $('#fAdd').click(); };
+
+function segHtml(name, opts, val){
+  return '<div class="seg sm">' + opts.map(([v, t]) => `<label><input type="radio" name="${name}" value="${v}"${String(v) === String(val) ? ' checked' : ''}>${t}</label>`).join('') + '</div>';
+}
+function unitSelHtml(val, autoText){
+  return '<select aria-label="단위">' + UNIT_OPTS.map(([v, t]) => `<option value="${v}"${v === +val ? ' selected' : ''}>${v === 0 ? esc(autoText) : t}</option>`).join('') + '</select>';
+}
+function renderFiles(){
+  const tb = $('#fFiles tbody'); tb.innerHTML = '';
+  FI.files.forEach((f, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(f.basename)}<div class="note">${esc(f.path)}</div></td>`
+      + `<td><input type="date" value="${esc(f.period_end)}" aria-label="결산일"></td>`
+      + `<td>${segHtml('fk' + i, [['annual', '연간'], ['half', '반기']], f.kind)}</td>`
+      + `<td>${segHtml('fd' + i, [['OFS', '별도'], ['CFS', '연결']], f.fs_div)}</td>`
+      + `<td>${unitSelHtml(f.unit, '지정 안 함(원으로 읽음)')}</td>`
+      + `<td><button class="btn danger" type="button">삭제</button></td>`;
+    tr.querySelector('input[type=date]').onchange = ev => { f.period_end = ev.target.value; fScanAll(); };
+    tr.querySelectorAll(`input[name=fk${i}]`).forEach(r => r.onchange = () => { f.kind = r.value; fScanAll(); });
+    tr.querySelectorAll(`input[name=fd${i}]`).forEach(r => r.onchange = () => { f.fs_div = r.value; });
+    tr.querySelector('select').onchange = ev => { f.unit = +ev.target.value; renderTables(); };
+    tr.querySelector('button').onclick = () => { fRemapAfterDelete(f.path); FI.files.splice(i, 1); renderFiles(); fScanAll(); };
+    tb.appendChild(tr);
+  });
+  $('#fFileCnt').textContent = FI.files.length ? FI.files.length + '개' : '';
+  show('#fFilesWrap', '#fFilesEmpty', FI.files.length > 0);
+}
+// 파일 삭제: 그 파일의 layout·자동값을 지우고, 같은 파일명이 남아 있으면 서버가 다시 매길 키('a.xlsx', 'a.xlsx#2', …)로 옮긴다
+function fRemapAfterDelete(path){
+  const kbOf = p => (FI.scan.find(s => s.path === p) || {}).key_base;
+  const gone = kbOf(path), seen = {}, moves = [];
+  FI.files.filter(f => f.path !== path).forEach(f => {
+    const n = seen[f.basename] = (seen[f.basename] || 0) + 1;
+    const nk = f.basename + (n > 1 ? '#' + n : ''), ok = kbOf(f.path);
+    if (ok && ok !== nk) moves.push([ok, nk]);
+  });
+  [FI.layout, FI.auto].forEach(m => {
+    if (gone) Object.keys(m).forEach(k => { if (k.startsWith(gone + '|')) delete m[k]; });
+    const moved = {};
+    moves.forEach(([a, b]) => Object.keys(m).forEach(k => { if (k.startsWith(a + '|')) { moved[b + k.slice(a.length)] = m[k]; delete m[k]; } }));
+    Object.assign(m, moved);
+  });
+}
+
+async function fScanAll(){
+  const seq = ++FI.seq;
+  if (!FI.files.length) { FI.scan = []; $('#fScanOut').textContent = ''; renderTables(); return; }
+  $('#fScanOut').textContent = '인식 중…'; $('#fScan').disabled = true;
+  try {
+    // 결산일을 아직 정하지 않은 파일은 서버가 결산일·연간/반기를 추정한다(kind 를 보내지 않음)
+    const files = FI.files.map(f => ({path: f.path, period_end: f.period_end || null, kind: f.period_end ? f.kind : null, fs_div: f.fs_div, unit: f.unit || null}));
+    const r = await J('/api/file/scan', {files, layout: FI.layout});
+    if (seq !== FI.seq) return;
+    FI.scan = r.files;
+    let filled = false;
+    r.files.forEach(s => {
+      const f = FI.files.find(x => x.path === s.path);
+      if (f && !f.period_end && s.period_end_guess) { f.period_end = s.period_end_guess; f.kind = s.kind_guess; filled = true; }
+    });
+    if (filled) renderFiles();
+    const noDate = FI.files.filter(f => !f.period_end).map(f => f.basename + ': 결산일을 찾지 못함 — 직접 입력');
+    const noTable = r.files.filter(s => s.note).map(s => `${s.basename}: ${s.note}`);
+    $('#fScanOut').textContent = r.errors.map(e => `${baseName(e.path)}: ${e.error}`).concat(noTable, noDate).join(' / ');
+    renderTables();
+  } catch (e) { if (seq === FI.seq) $('#fScanOut').textContent = '인식 실패: ' + e.message; }
+  finally { if (seq === FI.seq) $('#fScan').disabled = false; }
+}
+$('#fScan').onclick = fScanAll;
+
+function periodKeys(f){
+  const y = +String(f.period_end || '').slice(0, 4); if (!y) return [];
+  return f.kind === 'half' ? [`${y}H1`, `${y - 1}H1`, `FY${y - 1}`, `FY${y - 2}`] : [`FY${y}`, `FY${y - 1}`, `FY${y - 2}`];
+}
+function setLayout(key, field, val){
+  const o = FI.layout[key] || (FI.layout[key] = {});
+  if (val === undefined) delete o[field]; else o[field] = val;
+  if (!Object.keys(o).length) delete FI.layout[key];
+}
+// 스캔 결과는 사용자 수정값이 반영돼 오므로, 수정이 없는 필드의 값을 자동값으로 기억해 둔다.
+// 사용자가 자동값을 다시 고르면 layout 에서 그 수정을 지운다(layout 에는 실제 변경만 남긴다).
+function autoOf(t){
+  const ov = FI.layout[t.key] || {}, ovp = ov.periods || {};
+  const a = FI.auto[t.key] || (FI.auto[t.key] = {periods: {}});
+  if (!('kind' in ov)) a.kind = t.kind;
+  if (!('header_row' in ov)) a.header_row = t.header_row;
+  if (!('label_cols' in ov)) a.label_cols = (t.label_cols || []).join(',');
+  Object.keys(t.auto_periods).forEach(c => { if (!(c in ovp)) a.periods[c] = t.auto_periods[c]; });
+  return a;
+}
+function layoutKind(t, v){ setLayout(t.key, 'kind', v === autoOf(t).kind ? undefined : v); }
+function layoutHeader(t, v){ setLayout(t.key, 'header_row', v > 0 && v !== autoOf(t).header_row ? v : undefined); }
+function layoutLabelCols(t, cols){ setLayout(t.key, 'label_cols', cols.length && cols.join(',') !== autoOf(t).label_cols ? cols : undefined); }
+function layoutPeriod(t, c, v){
+  const a = autoOf(t), p = Object.assign({}, (FI.layout[t.key] || {}).periods || {});
+  v = v || null;
+  if (c in a.periods && v === a.periods[c]) delete p[c]; else p[c] = v;
+  setLayout(t.key, 'periods', Object.keys(p).length ? p : undefined);
+}
+function layoutUnit(t, v){ setLayout(t.key, 'unit', +v || undefined); }
+function tableUnitAuto(t, f){ const u = t.unit != null ? t.unit : (f.unit || null); return '자동(' + (UNIT_NAME[u] || (u ? u : '미표기')) + ')'; }
+function renderTables(){
+  const tb = $('#fTables tbody'); tb.innerHTML = '';
+  let n = 0; const notes = {};
+  FI.scan.forEach(s => {
+    const f = FI.files.find(x => x.path === s.path) || {};
+    s.scan.sheets.forEach(sh => {
+      if (sh.hidden) return;
+      if (sh.note) {                 // 표를 못 찾은 이유(수식만 있어 계산값이 없는 시트 등)
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${esc(s.basename)}</td><td>${esc(sh.name)}</td><td colspan="7" class="note"></td>`;
+        tr.lastElementChild.textContent = sh.note; tb.appendChild(tr);
+      }
+      sh.tables.forEach(t => {
+        n++;
+        const ov = FI.layout[t.key] || {}, ovp = ov.periods || {};
+        const keys = periodKeys(f);
+        const pcols = Object.keys(t.auto_periods).map(c => {
+          const g = t.period_cols[c] || {text: (t.col_texts || {})[c] || ''};
+          const cur = c in ovp ? ovp[c] : t.auto_periods[c];
+          const opts = [...new Set([...keys, cur].filter(Boolean))];
+          return `<div class="pcol"><span title="${esc(g.text)}">${esc(g.text || '열 ' + c)}</span><select data-col="${c}" aria-label="기간">`
+            + opts.map(k => `<option value="${k}"${k === cur ? ' selected' : ''}>${k}</option>`).join('') + `<option value=""${cur ? '' : ' selected'}>제외</option></select></div>`;
+        }).join('');
+        const conf = {high: 'ok', mid: 'acc', low: 'bad'}[t.confidence] || '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${esc(s.basename)}</td><td>${esc(sh.name)}</td>`
+          + `<td>${esc(t.title || '')}${t.kind === 'NOTE' ? `<div class="note">주석 ${esc(t.note_no ? t.note_no + '. ' : '')}${esc(t.note_title)}</div>` : ''}</td>`
+          + `<td><select aria-label="유형">${KIND_OPTS.map(([v, l]) => `<option value="${v}"${v === t.kind ? ' selected' : ''}>${l}</option>`).join('')}</select></td>`
+          + `<td class="num"><input type="number" min="1" value="${t.header_row}" style="width:64px" aria-label="머리글 행"></td>`
+          + `<td><input value="${esc(t.label_cols.join(','))}" style="width:60px" aria-label="라벨 열" placeholder="1,2"></td>`
+          + `<td>${pcols || '<span class="note">기간 열 없음</span>'}${t.period_msgs.length ? `<div class="note">${esc(t.period_msgs.join(' / '))}</div>` : ''}</td>`
+          + `<td>${unitSelHtml(ov.unit || 0, tableUnitAuto(t, f))}</td>`
+          + `<td><span class="pill ${conf}">${esc(t.confidence)}</span>${t.inferred ? ' <span class="pill bad">확인 필요</span>' : ''}${t.reason ? `<div class="note">${esc(t.reason)}</div>` : ''}</td>`;
+        const [kindSel, hdrIn, labIn] = [tr.querySelector('td:nth-child(4) select'), tr.querySelector('input[type=number]'), tr.querySelector('td:nth-child(6) input')];
+        autoOf(t);                 // 렌더 시점(수정 전) 값을 자동값으로 기억
+        kindSel.onchange = () => { layoutKind(t, kindSel.value); fScanAll(); };
+        hdrIn.onchange = () => { layoutHeader(t, +hdrIn.value); fScanAll(); };       // 머리글 행·라벨 열을 고치면 그 행·열로 다시 인식
+        labIn.onchange = () => {
+          const cols = labIn.value.split(/[,\s]+/).map(Number).filter(x => x > 0);
+          if (!cols.length) { labIn.value = t.label_cols.join(','); return alert('라벨 열은 1 이상의 열 번호(예: 1,2)'); }
+          layoutLabelCols(t, cols); fScanAll();
+        };
+        tr.querySelectorAll('select[data-col]').forEach(sel => sel.onchange = () => { layoutPeriod(t, sel.dataset.col, sel.value); fScanAll(); });   // 기간 겹침 안내를 바로 보이게
+        tr.querySelector('td:nth-child(8) select').onchange = ev => layoutUnit(t, ev.target.value);
+        tb.appendChild(tr);
+        if (t.kind === 'NOTE' && f.kind !== 'half') {
+          const e = notes[t.title_norm] || (notes[t.title_norm] = {no: t.note_no, title: t.note_title, where: [], count: 0,
+            include: t.title_norm in FI.notes ? FI.notes[t.title_norm].include : true});
+          e.no = t.note_no || e.no; e.title = t.note_title || e.title; e.count++;
+          const w = `${s.basename} · ${sh.name}`; if (!e.where.includes(w)) e.where.push(w);
+        }
+      });
+    });
+  });
+  $('#fScanCnt').textContent = n ? `표 ${n}개` : '';
+  show('#fTablesWrap', '#fTablesEmpty', n > 0);
+  FI.notes = notes; renderFileNotes();
+}
+function renderFileNotes(){
+  const tb = $('#fNotes tbody'); tb.innerHTML = '';
+  const keys = Object.keys(FI.notes).sort((a, b) => (+FI.notes[a].no || 999) - (+FI.notes[b].no || 999) || a.localeCompare(b));
+  keys.forEach(k => {
+    const e = FI.notes[k]; const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input type="checkbox" ${e.include ? 'checked' : ''} aria-label="포함"></td><td class="num">${esc(e.no)}</td><td>${esc(e.title)}</td><td>${esc(e.where.join(', '))}</td><td class="num">${e.count}</td>`;
+    tr.querySelector('input').onchange = ev => { e.include = ev.target.checked; fNoteCount(); };
+    tb.appendChild(tr);
+  });
+  show('#fNotesWrap', '#fNotesEmpty', keys.length > 0); fNoteCount();
+}
+function fNoteCount(){ const ks = Object.keys(FI.notes); $('#fNoteCnt').textContent = ks.length ? `${ks.length}개 · 선택 ${ks.filter(k => FI.notes[k].include).length}` : ''; }
+
+function fPeriodRange(files){
+  const years = [], halves = [];
+  files.forEach(f => { const y = +f.period_end.slice(0, 4); if (y) years.push(y); if (f.kind === 'half') halves.push(1); });
+  // 표의 기간 매핑(자동·사용자) 연도도 범위에 넣는다 — 전기·전전기 열이 범위 밖이라 조용히 빠지지 않게
+  // collect_files 와 같은 거르기: 숨김 시트 제외, 반기 파일의 주석 표 제외
+  FI.scan.forEach(s => s.scan.sheets.forEach(sh => sh.hidden || sh.tables.forEach(t => {
+    const f = FI.files.find(x => x.path === s.path) || {};
+    if (t.kind === 'OTHER' || t.kind === 'NOTE' && f.kind === 'half') return;
+    const ovp = (FI.layout[t.key] || {}).periods || {};
+    Object.keys(t.auto_periods).forEach(c => {
+      const m = PK_RE.exec((c in ovp ? ovp[c] : t.auto_periods[c]) || ''); if (!m) return;
+      years.push(+(m[1] || m[2])); if (m[2]) halves.push(1);
+    });
+  })));
+  return {start_year: Math.min(...years), end_year: Math.max(...years), include_half: halves.length > 0};
+}
+function fCfg(){
+  const name = $('#fCorp').value.trim();
+  const files = FI.files.map(f => ({path: f.path, period_end: f.period_end, kind: f.kind, fs_div: f.fs_div, unit: f.unit || null}));
+  const rng = fPeriodRange(files);
+  const noteInc = {}; Object.keys(FI.notes).forEach(k => { noteInc[k] = !!FI.notes[k].include; });
+  return {source: 'file', corp_code: 'FILE:' + name, corp_name: name, as_of: $('#fAsof').value,
+          start_year: rng.start_year, end_year: rng.end_year, include_half: rng.include_half,
+          fs_divs: [...new Set(files.map(f => f.fs_div))], unit_display: +document.querySelector('input[name=funit]:checked').value,
+          note_include: noteInc, files, layout: FI.layout, preset: 'default'};
+}
+$('#fBuild').onclick = async () => {
+  if (!$('#fCorp').value.trim()) return alert('회사명을 입력하세요');
+  if (!FI.files.length) return alert('파일을 추가하세요');
+  const miss = FI.files.filter(f => !f.period_end); if (miss.length) return alert('결산일을 입력하세요: ' + miss.map(f => f.basename).join(', '));
+  if (!FI.scan.length) return alert('[인식]을 먼저 눌러 표를 확인하세요');
+  const flagged = FI.scan.reduce((a, s) => a + s.inferred.length, 0);
+  if (flagged && !confirm(`기간을 회차로 추정한 표가 ${flagged}개 있습니다("확인 필요"). 그대로 생성할까요?`)) return;
+  const btn = $('#fBuild'); $('#fLog').textContent = ''; btn.disabled = true; $('#fLog').parentElement.open = true;
+  $('#fResult').textContent = '생성 중…'; $('#fOpenFolder').classList.add('hidden');
+  const fail = () => { $('#fResult').innerHTML = '<span class="pill bad">실패</span>'; btn.disabled = false; };
+  try {
+    const r = await J('/api/file/build', {cfg: fCfg()});
+    follow(r.job, '#fLog', res => { FI.lastPath = res.path; $('#fResult').innerHTML = buildResultHtml(res); $('#fOpenFolder').classList.remove('hidden'); btn.disabled = false; }, fail);
+  } catch (e) { alert(e.message); fail(); }
+};
+$('#fOpenFolder').onclick = () => { if (FI.lastPath) J('/api/open-folder', {path: FI.lastPath}).catch(e => alert(e.message)); };
+
+loadConfig(); loadPresets();
+</script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const button = document.querySelector('#themeToggle');
+  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+  const isDark = () => root.dataset.theme ? root.dataset.theme === 'dark' : systemTheme.matches;
+  function syncButton() {
+    const dark = isDark();
+    button.textContent = dark ? '다크모드 해제' : '다크모드 켜기';
+    button.setAttribute('aria-pressed', String(dark));
+  }
+  button.addEventListener('click', () => {
+    const theme = isDark() ? 'light' : 'dark';
+    root.dataset.theme = theme;
+    try { localStorage.setItem('dart_fs_theme', theme); } catch (e) { /* Current-page selection still works. */ }
+    syncButton();
+  });
+  systemTheme.addEventListener('change', syncButton);
+  syncButton();
+})();
+document.querySelector('#build').addEventListener('click', () => {
+  if (corp) document.querySelector('#log').parentElement.open = true;
+});
+document.querySelector('#refresh').addEventListener('click', () => {
+  if (document.querySelector('#wbpath').value.trim()) document.querySelector('#log2').parentElement.open = true;
+});
+</script>
+</body>
+</html>

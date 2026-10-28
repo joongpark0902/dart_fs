@@ -1,0 +1,17 @@
+config.txt
+output/
+cache/
+__pycache__/
+*.pyc
+backup_*
+.superpowers/
+work/
+*.xlsm
+*.xlsx
+CORPCODE.xml
+tests/_out/
+mapping/user/
+
+# 공개 예시 산출물은 올린다
+!examples/*.xlsm
+!examples/**/*.xlsx

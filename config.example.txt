@@ -1,0 +1,2 @@
+# DART OpenAPI 인증키 (https://opendart.fss.or.kr) — 본인 키만. config.txt 로 복사해서 쓰세요.
+api_key = 여기에_키

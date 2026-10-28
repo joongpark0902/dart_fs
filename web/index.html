@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dart_fs</title>
+<style>
+:root{
+  --bg:#f4f5f7; --surface:#ffffff; --surface-2:#f1f3f6; --fg:#15181e; --fg-2:#4b5260; --fg-3:#7b8290;
+  --line:#e3e6eb; --line-2:#eef0f3; --accent:#2f5fd6; --accent-soft:#e8eefc; --accent-fg:#ffffff;
+  --danger:#d3382a; --danger-soft:#fdecea; --ok:#1c8a5a; --ok-soft:#e4f5ec;
+  --font:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
+  --ring:0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#111317; --surface:#191c22; --surface-2:#22262e; --fg:#eceef2; --fg-2:#b4bac6; --fg-3:#7b8290;
+  --line:#2b3039; --line-2:#22262e; --accent:#7ea2ff; --accent-soft:#1f2a45; --accent-fg:#0b1430;
+  --danger:#ff8a7a; --danger-soft:#3a1f1c; --ok:#4fd095; --ok-soft:#16302a; } }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit} button{cursor:pointer}
+h1,h3{margin:0}
+.hidden{display:none !important}
+:where(button,select,input,textarea,[tabindex]):focus-visible{outline:none;box-shadow:var(--ring)}
+
+/* 상단바 */
+.topbar{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);padding:0 16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0 18px;min-height:52px}
+.brand{display:flex;align-items:baseline;gap:10px;padding-block:12px}
+.brand h1{font-size:16px;font-weight:700;letter-spacing:-.02em}
+.brand .sub{font-size:12px;color:var(--fg-3)}
+.brand .sub::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:5px;vertical-align:1px}
+.brand .sub.nokey::before{background:var(--danger)}
+.tabs{display:flex;gap:2px;align-self:stretch}
+.tabs button{border:0;background:transparent;padding:0 10px;color:var(--fg-3);font-weight:500;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;border-radius:0}
+.tabs button:hover{color:var(--fg)}
+.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent);font-weight:700}
+.tabs button:focus-visible{box-shadow:none;outline:2px solid var(--accent);outline-offset:-2px;border-radius:6px}
+
+/* 본문 */
+main{max-width:1200px;margin:0 auto;padding:18px 16px 48px;display:grid;gap:16px}
+section[role=tabpanel]{display:grid;gap:16px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0}
+.panel h3{font-size:14px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px;letter-spacing:-.01em}
+.panel h3 .cnt{font-weight:400;color:var(--fg-3);font-size:12px}
+.row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 12px;margin-bottom:10px}
+.row:last-child{margin-bottom:0}
+.note{font-size:12px;color:var(--fg-3)}
+
+/* 버튼 */
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 12px;font-weight:500;font-size:13px;line-height:20px;color:var(--fg);transition:background .12s,border-color .12s}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.primary:hover{background:color-mix(in srgb, var(--accent) 88%, black)}
+.btn.danger{color:var(--danger)}
+.btn.danger:hover{background:var(--danger-soft)}
+.btn:disabled{opacity:.5;cursor:default}
+
+/* 입력 */
+.field{display:grid;gap:5px;min-width:0}
+.field label,.field .lbl{font-size:12px;color:var(--fg-2);font-weight:500}
+.field input,.field select{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--surface);width:100%;min-width:0;transition:border-color .12s}
+.field input:hover,.field select:hover{border-color:var(--fg-3)}
+.field input:focus-visible,.field select:focus-visible{border-color:var(--accent)}
+.grow{flex:1 1 280px}
+.w-date{flex:0 1 160px} .w-year{flex:0 1 100px} .w-name{flex:0 1 160px} .w-sel{flex:0 1 180px}
+
+/* 세그먼트 · 칩 · 알약 */
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg label{position:relative;border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;line-height:18px;color:var(--fg-2)}
+.seg label:hover{background:var(--surface-2)}
+.seg input{position:absolute;opacity:0;width:0;height:0}
+.seg label:has(input:checked){background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb, var(--accent) 35%, transparent);font-weight:500}
+.seg label:has(input:focus-visible){box-shadow:var(--ring)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{border:1px solid transparent;background:var(--surface);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--fg-2);display:inline-flex;align-items:center;gap:6px;line-height:16px;box-shadow:inset 0 0 0 1px var(--line)}
+.chip:hover{background:var(--surface-2)}
+.chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);font-weight:500}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:500;background:var(--surface-2);color:var(--fg-2);line-height:18px;white-space:nowrap}
+.pill.acc{background:var(--accent-soft);color:var(--accent)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.bad{background:var(--danger-soft);color:var(--danger)}
+
+/* 표 */
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-size:11px;color:var(--fg-3);font-weight:500;letter-spacing:.04em;white-space:nowrap;border-bottom-color:var(--line)}
+td.num,th.num{text-align:right}
+tr.clickable{cursor:pointer}
+tr.clickable:hover td{background:var(--accent-soft)}
+tr.sel td{background:var(--accent-soft)}
+tr.sel td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+.tablewrap table{min-width:560px}
+.base{color:var(--accent);font-weight:500;font-size:12px;margin-left:4px}
+.empty{color:var(--fg-3);font-size:13px;padding:14px 0;text-align:center}
+
+/* 로그 */
+pre.log{background:var(--surface-2);color:var(--fg-2);font:12px/1.55 Consolas,"D2Coding",monospace;border-radius:8px;height:240px;overflow:auto;padding:10px 12px;margin:10px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.result{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--fg-2);min-width:0;overflow-wrap:anywhere}
+
+@media (max-width:720px){
+  .topbar{padding:0 12px}
+  .row > .field{flex:1 1 100%}
+  .row > .w-year{flex:1 1 calc(50% - 6px)}
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><h1>dart_fs</h1><span class="sub nokey" id="keyState">인증키 확인 중</span></div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="build" aria-selected="true">생성</button>
+    <button role="tab" data-tab="update" aria-selected="false">업데이트</button>
+    <button role="tab" data-tab="settings" aria-selected="false">설정</button>
+  </nav>
+</header>
+
+<main>
+<!-- 탭: 생성 -->
+<section role="tabpanel" id="tab-build">
+  <div class="panel">
+    <h3>① 회사 <span class="cnt" id="corpCnt"></span></h3>
+    <div class="row">
+      <div class="field grow"><label for="q">회사 검색</label><input id="q" placeholder="회사명 · 종목코드 · corp_code"></div>
+      <button class="btn primary" id="search">검색</button>
+    </div>
+    <div class="tablewrap hidden" id="corpsWrap"><table id="corps"><thead><tr><th>회사명</th><th>종목코드</th><th>corp_code</th></tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="corpsEmpty">회사를 먼저 검색하세요</div>
+  </div>
+
+  <div class="panel">
+    <h3>② 조건 <span class="cnt" id="picked">선택 없음</span></h3>
+    <div class="row">
+      <div class="field w-date"><label for="asof">기준일</label><input id="asof" type="date"></div>
+      <div class="field w-year"><label for="y1">시작 연도</label><input id="y1" type="number"></div>
+      <div class="field w-year"><label for="y2">끝 연도</label><input id="y2" type="number"></div>
+    </div>
+    <div class="row">
+      <div class="field"><span class="lbl">기간</span><div class="seg">
+        <label><input type="radio" name="half" value="0" checked>연간</label>
+        <label><input type="radio" name="half" value="1">반기 포함</label></div></div>
+      <div class="field"><span class="lbl">재무제표</span><div class="seg">
+        <label><input type="checkbox" id="cfs">연결</label>
+        <label><input type="checkbox" id="ofs" checked>별도</label></div></div>
+      <div class="field"><span class="lbl">mFS 단위</span><div class="seg">
+        <label title="공시 재무상태표 단위를 그대로 씁니다(천원 공시면 천원). 엑셀 설정 시트에서 바로 바꿀 수 있습니다."><input type="radio" name="unit" value="0" checked>자동(공시 단위)</label>
+        <label><input type="radio" name="unit" value="1">원</label>
+        <label><input type="radio" name="unit" value="1000">천원</label>
+        <label><input type="radio" name="unit" value="1000000">백만원</label></div></div>
+      <button class="btn primary" id="plan">보고서 조회</button>
+    </div>
+    <div class="note" id="planOut"></div>
+    <div class="tablewrap hidden" id="reportsWrap"><table id="reports"><thead><tr><th>기간말</th><th>보고서</th><th>접수번호</th><th>접수일</th><th>정정</th><th>구분</th></tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="reportsEmpty">회사를 고른 뒤 [보고서 조회]를 누르세요</div>
+  </div>
+
+  <div class="panel">
+    <h3>③ 주석 <span class="cnt" id="tocCnt"></span></h3>
+    <div class="row">
+      <button class="btn" id="toc">목차 불러오기</button>
+      <span class="note" id="tocBase"></span>
+    </div>
+    <div class="row">
+      <div class="chips">
+        <button class="chip" id="recOnly" aria-pressed="false">★ 추천만</button>
+        <button class="chip" id="allOn" aria-pressed="false">전체</button>
+        <button class="chip" id="allOff" aria-pressed="false">해제</button>
+      </div>
+      <div class="field w-sel"><label for="preset">프리셋</label><select id="preset"></select></div>
+      <div class="field w-name"><label for="presetName">프리셋 이름</label><input id="presetName" placeholder="이름"></div>
+      <button class="btn" id="savePreset">저장</button>
+    </div>
+    <div class="tablewrap hidden" id="notesWrap"><table id="notes"><thead><tr><th></th><th class="num">번호</th><th>제목</th><th>주제</th><th>★</th><th class="num">표 수</th><th>배치 시트</th></tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="notesEmpty">[목차 불러오기]로 기준 보고서의 주석 목차를 가져오세요</div>
+  </div>
+
+  <div class="panel">
+    <h3>④ 생성</h3>
+    <div class="row" style="align-items:center">
+      <button class="btn primary" id="build">엑셀 생성</button>
+      <span class="result" id="result"></span>
+      <button class="btn hidden" id="openFolder">폴더 열기</button>
+    </div>
+    <pre class="log" id="log"></pre>
+  </div>
+</section>
+
+<!-- 탭: 업데이트 -->
+<section role="tabpanel" id="tab-update" class="hidden">
+  <div class="panel">
+    <h3>기존 파일 업데이트</h3>
+    <div class="row">
+      <div class="field grow"><label for="wbpath">파일 경로</label><input id="wbpath" placeholder="C:\...\회사_2026-10-26.xlsm"></div>
+      <button class="btn primary" id="refresh">업데이트</button>
+    </div>
+    <div class="note">Excel에 열려 있으면 파일 안의 [업데이트] 버튼을 쓰세요.</div>
+    <span class="result" id="refreshResult"></span>
+    <pre class="log" id="log2"></pre>
+  </div>
+</section>
+
+<!-- 탭: 설정 -->
+<section role="tabpanel" id="tab-settings" class="hidden">
+  <div class="panel">
+    <h3>설정</h3>
+    <div class="row">
+      <div class="field grow"><label for="key">DART 인증키</label><input id="key" type="password" placeholder="config.txt에 저장됩니다" autocomplete="off"></div>
+      <button class="btn primary" id="saveKey">저장</button>
+    </div>
+    <div class="row">
+      <div class="field grow"><span class="lbl">파이썬 경로 (읽기 전용 — config.txt에서만 변경)</span><div class="note" id="pyPath">-</div></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const J = (u, b) => fetch(u, b ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(b)} : {})
+  .then(async r => { const j = await r.json(); if (!r.ok || (j && j.error)) throw new Error((j && j.error) || r.status); return j; });
+let corp = null, toc = [], lastPath = null;
+
+/* 탭 */
+function showTab(t){
+  document.querySelectorAll('.tabs [role=tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+  document.querySelectorAll('section[role=tabpanel]').forEach(s => s.classList.toggle('hidden', s.id !== 'tab-' + t));
+}
+document.querySelectorAll('.tabs [role=tab]').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+/* 기본값 */
+const today = new Date();
+$('#asof').value = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+$('#y2').value = today.getFullYear() - 1; $('#y1').value = today.getFullYear() - 5;
+
+function cfg(){
+  const fs = []; if ($('#cfs').checked) fs.push('CFS'); if ($('#ofs').checked) fs.push('OFS');
+  return {corp_code: corp.corp_code, corp_name: corp.corp_name, as_of: $('#asof').value,
+          start_year: +$('#y1').value, end_year: +$('#y2').value,
+          include_half: document.querySelector('input[name=half]:checked').value === '1', fs_divs: fs,
+          unit_display: +document.querySelector('input[name=unit]:checked').value, preset: $('#preset').value || 'default'};
+}
+function noteInclude(){ const o = {}; toc.forEach(e => { o[e.title_norm] = !!e.include; }); return o; }
+function logTo(id, m){ const p = $(id); p.textContent += m + '\n'; p.scrollTop = p.scrollHeight; }
+function show(wrap, empty, has){ $(wrap).classList.toggle('hidden', !has); $(empty).classList.toggle('hidden', has); }
+function needCorp(){ if (!corp) { alert('회사를 먼저 선택하세요'); return false; } return true; }
+
+/* 설정 */
+async function loadConfig(){
+  try {
+    const c = await J('/api/config');
+    const s = $('#keyState'); s.textContent = c.has_key ? '인증키 저장됨' : '인증키 없음'; s.classList.toggle('nokey', !c.has_key);
+    if (c.server_started) s.textContent += ' · 서버 ' + c.server_started.slice(11) + ' 시작 · 코드 ' + c.code_version;
+    $('#pyPath').textContent = c.python || '-';
+  } catch (e) { $('#keyState').textContent = '서버 연결 실패'; }
+}
+$('#saveKey').onclick = async () => {
+  const k = $('#key').value.trim(); if (!k) return alert('인증키를 입력하세요');
+  try { await J('/api/config', {api_key: k}); $('#key').value = ''; await loadConfig(); } catch (e) { alert(e.message); }
+};
+
+/* ① 회사 */
+async function search(){
+  const q = $('#q').value.trim(); if (!q) return;
+  const btn = $('#search'); btn.disabled = true;
+  try {
+    const r = await J('/api/search?q=' + encodeURIComponent(q));
+    const tb = $('#corps tbody'); tb.innerHTML = '';
+    r.forEach(c => {
+      const tr = document.createElement('tr'); tr.className = 'clickable'; tr.tabIndex = 0;
+      tr.innerHTML = `<td>${esc(c.corp_name)}</td><td>${esc(c.stock_code)}</td><td>${esc(c.corp_code)}</td>`;
+      tr.onclick = () => { corp = c; [...tb.children].forEach(x => x.classList.remove('sel')); tr.classList.add('sel');
+        $('#picked').textContent = `${c.corp_name} (${c.corp_code})`; };
+      tr.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tr.click(); } };
+      tb.appendChild(tr);
+    });
+    $('#corpCnt').textContent = r.length + '건';
+    show('#corpsWrap', '#corpsEmpty', r.length > 0);
+    if (!r.length) $('#corpsEmpty').textContent = '검색 결과가 없습니다';
+  } catch (e) { alert(e.message); } finally { btn.disabled = false; }
+}
+$('#search').onclick = search;
+$('#q').onkeydown = e => { if (e.key === 'Enter') search(); };
+
+/* ② 조건 · 보고서 */
+$('#plan').onclick = async () => {
+  if (!needCorp()) return;
+  const btn = $('#plan'); btn.disabled = true;
+  try {
+    const r = await J('/api/plan', cfg());
+    $('#planOut').textContent = '기간: ' + (r.periods.join(', ') || '없음') + (r.log.length ? ' · ' + r.log.join(' / ') : '');
+    const tb = $('#reports tbody'); tb.innerHTML = '';
+    r.reports.forEach(x => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${esc(x.period_end)}</td><td>${esc(x.report_nm)}${x.rcept_no === r.base_report ? '<span class="base">(기준)</span>' : ''}</td>`
+        + `<td>${esc(x.rcept_no)}</td><td>${esc(x.rcept_dt)}</td><td>${x.corrected ? '<span class="pill acc">정정</span>' : ''}</td>`
+        + `<td>${x.fs_divs.map(d => d === 'CFS' ? '연결' : '별도').join('/')}</td>`;
+      tb.appendChild(tr);
+    });
+    show('#reportsWrap', '#reportsEmpty', r.reports.length > 0);
+    if (!r.reports.length) $('#reportsEmpty').textContent = '조건에 맞는 보고서가 없습니다';
+  } catch (e) { alert(e.message); } finally { btn.disabled = false; }
+};
+
+/* ③ 주석 */
+function setChip(id){ ['#recOnly', '#allOn', '#allOff'].forEach(c => $(c).setAttribute('aria-pressed', String(c === id))); }
+function renderToc(){
+  const tb = $('#notes tbody'); tb.innerHTML = '';
+  toc.forEach((e, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input type="checkbox" ${e.include ? 'checked' : ''} aria-label="포함"></td><td class="num">${esc(e.no)}</td><td>${esc(e.title)}</td>`
+      + `<td>${esc(e.topic)}</td><td>${e.recommended ? '★' : ''}</td><td class="num">${esc(e.table_count)}</td><td>${esc(e.sheet)}</td>`;
+    tr.querySelector('input').onchange = ev => { toc[i].include = ev.target.checked; setChip(null); count(); };
+    tb.appendChild(tr);
+  });
+  show('#notesWrap', '#notesEmpty', toc.length > 0); count();
+}
+function count(){ $('#tocCnt').textContent = toc.length ? `${toc.length}개 · 선택 ${toc.filter(e => e.include).length}` : ''; }
+$('#toc').onclick = async () => {
+  if (!needCorp()) return;
+  const btn = $('#toc'); btn.disabled = true; $('#tocBase').textContent = '불러오는 중…';
+  try {
+    const r = await J('/api/toc', cfg());
+    $('#tocBase').textContent = `기준 보고서: ${r.base.report_nm} (${r.base.rcept_no})`;
+    toc = r.entries.map(e => ({...e, include: true})); setChip('#allOn'); renderToc();
+  } catch (e) { $('#tocBase').textContent = ''; alert(e.message); } finally { btn.disabled = false; }
+};
+$('#recOnly').onclick = () => { toc.forEach(e => e.include = e.recommended); setChip('#recOnly'); renderToc(); };
+$('#allOn').onclick = () => { toc.forEach(e => e.include = true); setChip('#allOn'); renderToc(); };
+$('#allOff').onclick = () => { toc.forEach(e => e.include = false); setChip('#allOff'); renderToc(); };
+
+async function loadPresets(){
+  try {
+    const p = await J('/api/presets'); const s = $('#preset');
+    s.innerHTML = '<option value="">(선택 안 함)</option>';
+    Object.keys(p).forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = k; o.dataset.v = JSON.stringify(p[k]); s.appendChild(o); });
+  } catch (e) { /* 프리셋 없음 */ }
+}
+$('#preset').onchange = () => {
+  const o = $('#preset').selectedOptions[0]; if (!o || !o.dataset.v) return;
+  const v = JSON.parse(o.dataset.v);
+  if (v === 'recommended' || (v && v.recommended === true)) toc.forEach(e => e.include = e.recommended);
+  else if (v && typeof v === 'object') toc.forEach(e => { if (e.title_norm in v) e.include = !!v[e.title_norm]; });
+  setChip(null); renderToc();
+};
+$('#savePreset').onclick = async () => {
+  const n = $('#presetName').value.trim(); if (!n) return alert('프리셋 이름을 입력하세요');
+  if (!toc.length) return alert('목차를 먼저 불러오세요');
+  try { await J('/api/presets', {name: n, note_include: noteInclude()}); await loadPresets(); $('#preset').value = n; } catch (e) { alert(e.message); }
+};
+
+/* ④ 생성 · 업데이트 (SSE) */
+function follow(job, logId, onDone, onError){
+  const es = new EventSource('/api/events/' + job);
+  es.onmessage = ev => {
+    const d = JSON.parse(ev.data);
+    if (d.type === 'log') logTo(logId, d.msg);
+    else if (d.type === 'done') { es.close(); onDone(d.result); }
+    else if (d.type === 'error') { es.close(); logTo(logId, '오류: ' + d.msg); onError(d.msg); }
+  };
+  es.onerror = () => { if (es.readyState === EventSource.CLOSED) return; es.close(); onError('연결 끊김'); };
+}
+$('#build').onclick = async () => {
+  if (!needCorp()) return;
+  if (!toc.length && !confirm('주석 목차를 불러오지 않았습니다. 추천 주석만 포함해 생성할까요?')) return;
+  const btn = $('#build'); $('#log').textContent = ''; btn.disabled = true;
+  $('#result').textContent = '생성 중…'; $('#openFolder').classList.add('hidden');
+  const fail = () => { $('#result').innerHTML = '<span class="pill bad">실패</span>'; btn.disabled = false; };
+  try {
+    const r = await J('/api/build', {...cfg(), note_include: toc.length ? noteInclude() : {recommended: true}});
+    follow(r.job, '#log', res => {
+      lastPath = res.path; const v = res.verify || {errors: 0, checks: {TRUE: 0, FALSE: 0}};
+      $('#result').innerHTML = `<span class="pill ok">TRUE ${esc(v.checks.TRUE)}</span>`
+        + `<span class="pill ${v.checks.FALSE ? 'bad' : ''}">FALSE ${esc(v.checks.FALSE)}</span>`
+        + `<span class="pill ${v.errors ? 'bad' : ''}">오류 ${esc(v.errors)}</span><span>${esc(res.path)}</span>`;
+      $('#openFolder').classList.remove('hidden'); btn.disabled = false;
+    }, fail);
+  } catch (e) { alert(e.message); fail(); }
+};
+$('#openFolder').onclick = () => { if (lastPath) J('/api/open-folder', {path: lastPath}).catch(e => alert(e.message)); };
+$('#refresh').onclick = async () => {
+  const p = $('#wbpath').value.trim().replace(/^"|"$/g, ''); if (!p) return alert('파일 경로를 입력하세요');
+  const btn = $('#refresh'); $('#log2').textContent = ''; btn.disabled = true; $('#refreshResult').textContent = '';
+  const fail = () => { $('#refreshResult').innerHTML = '<span class="pill bad">실패</span>'; btn.disabled = false; };
+  try {
+    const r = await J('/api/refresh', {workbook: p});
+    follow(r.job, '#log2', res => { $('#refreshResult').innerHTML = `<span class="pill ok">완료</span><span>${esc(res.path)}</span>`; btn.disabled = false; }, fail);
+  } catch (e) { alert(e.message); fail(); }
+};
+
+loadConfig(); loadPresets();
+</script>
+</body>
+</html>
