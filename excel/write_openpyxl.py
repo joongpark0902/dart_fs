@@ -113,8 +113,6 @@ def write_sheet(wb, ws, sh):
             xc.alignment = Alignment(horizontal="center")
         if cell.fmt == "hdr":
             xc.alignment = Alignment(horizontal="center", vertical="center")
-        if cell.fmt == "wrap":
-            xc.alignment = Alignment(wrap_text=True, vertical="top")
         side = border_of(cell)
         if side:
             xc.border = _border(side)

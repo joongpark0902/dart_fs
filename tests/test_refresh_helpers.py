@@ -99,5 +99,15 @@ class TestHelpers(unittest.TestCase):
             self.assertEqual(app.seen[0], WC.XL_CALC_MANUAL)          # 쓰는 동안은 수동
 
 
+    def test_collect_rejects_non_dart_source(self):
+        """예전 '파일로 생성' 산출물(source=file)은 DART 로 조회하지 않고 한국어 오류로 멈춘다."""
+        import json
+        cfg = {"source": "file", "corp_code": "FILE:x", "corp_name": "x", "as_of": "2026-10-27", "start_year": 2025, "end_year": 2025}
+        rows = [[None, "설정 JSON", json.dumps(cfg)]]
+        with self.assertRaises(RuntimeError) as cm:
+            R._collect_for(lambda name: rows if name == "설정" else None, lambda m: None)
+        self.assertIn("업데이트할 수 없습니다", str(cm.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

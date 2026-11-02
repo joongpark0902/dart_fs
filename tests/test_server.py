@@ -84,21 +84,6 @@ class TestServer(_ServerCase):
         self.assertEqual(seen["cfg"]["unit_display"], 0)
         self.assertEqual(SV.P.BuildConfig.from_dict(seen["cfg"]).unit_display, 0)
 
-    def test_build_forces_dart_source(self):
-        seen = {}
-
-        def fake(cfg, log):
-            seen["cfg"] = cfg
-            return {"path": "p.xlsm", "verify": {"errors": 0, "checks": {"TRUE": 0, "FALSE": 0, "해당 없음": 0}, "false_cells": []}}
-        with mock.patch.object(SV, "run_build", side_effect=fake):
-            st, body = self._post("/api/build", {"corp_code": "1", "corp_name": "x", "as_of": "2026-10-26", "start_year": 2025,
-                                                 "end_year": 2025, "include_half": False, "fs_divs": ["OFS"], "source": "file",
-                                                 "files": [{"path": "C:\\x.xlsx", "period_end": "2025-12-31"}]})
-            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/events/{body['job']}") as r:
-                r.read()
-        self.assertEqual(seen["cfg"]["source"], "dart")
-        self.assertEqual(SV.P.BuildConfig.from_dict(seen["cfg"]).source, "dart")
-
     def test_ui_unit_default_is_auto(self):
         st, body = self._get("/")
         html = body.decode("utf-8")
@@ -167,166 +152,17 @@ class TestServer(_ServerCase):
         self.assertEqual(self._status("/api/job/nope"), 404)
 
 
-class TestFileEndpoints(_ServerCase):
-    """파일 입력(F4): /api/file/scan · /api/file/build · /api/pick-files. 픽스처는 가상 '샘플전자'."""
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        from tests.fixtures import xlsx_fixture as F
-        cls.out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_out", "server")
-        os.makedirs(cls.out, exist_ok=True)
-        cls.stmt = F.build_statements(os.path.join(cls.out, "stmt_2025.xlsx"))
-        cls.notes = F.build_notes(os.path.join(cls.out, "notes_2025.xlsx"))
-        cls.tb = F.build_trial_balance(os.path.join(cls.out, "tb.xlsx"))
+class TestDartOnly(_ServerCase):
+    """회사 제시 엑셀 입력(파일로 생성)은 보류 — 엔드포인트·화면 탭이 남아 있지 않아야 한다."""
+    def test_file_endpoints_removed(self):
+        for path in ("/api/file/scan", "/api/file/build", "/api/pick-files"):
+            self.assertEqual(self._status(path, {}), 404, path)
 
-    def test_scan_fixture_statements(self):
-        st, body = self._post("/api/file/scan", {"paths": [self.stmt]})
-        self.assertEqual(st, 200); self.assertEqual(body["errors"], [])
-        f = body["files"][0]
-        self.assertEqual(f["path"], self.stmt); self.assertEqual(f["basename"], "stmt_2025.xlsx"); self.assertEqual(f["key_base"], "stmt_2025.xlsx")
-        self.assertEqual(f["period_end_guess"], "2025-12-31"); self.assertEqual(f["kind_guess"], "annual"); self.assertEqual(f["unit_guess"], 1)
-        self.assertEqual(f["inferred"], [])
-        sheets = {s["name"]: s for s in f["scan"]["sheets"]}
-        self.assertEqual(set(sheets), {"재무상태표", "손익계산서", "현금흐름표", "자본변동표"})
-        kinds = {name: s["tables"][0]["kind"] for name, s in sheets.items()}
-        self.assertEqual(kinds, {"재무상태표": "BS", "손익계산서": "IS", "현금흐름표": "CF", "자본변동표": "SCE"})
-        bs = sheets["재무상태표"]["tables"][0]
-        self.assertEqual(bs["key"], "stmt_2025.xlsx|재무상태표|0")
-        self.assertEqual(bs["auto_periods"], {"3": "FY2025", "4": "FY2024"})
-        self.assertEqual(bs["period_cols"]["3"]["role"], "cur"); self.assertIn(bs["confidence"], ("high", "mid", "low"))
-        self.assertNotIn("title_norm", bs)
-
-    def test_scan_notes_expose_title_norm_and_half_override(self):
-        st, body = self._post("/api/file/scan", {"files": [{"path": self.notes, "period_end": "2026-06-30", "kind": "half"}]})
-        f = body["files"][0]
-        tables = f["scan"]["sheets"][0]["tables"]
-        notes = [t for t in tables if t["kind"] == "NOTE"]
-        self.assertEqual([t["note_title"] for t in notes], ["판매비와관리비", "유형자산"])
-        self.assertEqual([t["note_no"] for t in notes], ["27", "12"])
-        self.assertEqual(notes[0]["title_norm"], SV.N.norm_label("판매비와관리비"))
-        self.assertEqual(f["period_end_guess"], "2026-06-30"); self.assertEqual(f["kind_guess"], "half")   # 사용자 지정값 우선
-        self.assertEqual(notes[0]["auto_periods"], {"2": "2026H1", "3": "2025H1"})
-
-    def test_scan_layout_override_and_duplicate_basename(self):
-        dup = os.path.join(self.out, "dup", "stmt_2025.xlsx")
-        os.makedirs(os.path.dirname(dup), exist_ok=True)
-        with open(self.stmt, "rb") as a, open(dup, "wb") as b:
-            b.write(a.read())
-        layout = {"stmt_2025.xlsx#2|재무상태표|0": {"kind": "OTHER", "periods": {"4": None}}}
-        st, body = self._post("/api/file/scan", {"paths": [self.stmt, dup], "layout": layout})
-        self.assertEqual([f["key_base"] for f in body["files"]], ["stmt_2025.xlsx", "stmt_2025.xlsx#2"])
-        bs2 = body["files"][1]["scan"]["sheets"][0]["tables"][0]
-        self.assertEqual(bs2["kind"], "OTHER"); self.assertEqual(bs2["key"], "stmt_2025.xlsx#2|재무상태표|0")
-        self.assertEqual(bs2["auto_periods"], {"3": "FY2025", "4": None})
-        bs1 = body["files"][0]["scan"]["sheets"][0]["tables"][0]
-        self.assertEqual(bs1["kind"], "BS")
-
-    def test_scan_trial_balance_has_no_guess(self):
-        st, body = self._post("/api/file/scan", {"paths": [self.tb]})
-        f = body["files"][0]
-        self.assertIsNone(f["period_end_guess"]); self.assertIsNone(f["unit_guess"]); self.assertEqual(f["kind_guess"], "annual")
-        self.assertEqual(f["scan"]["sheets"][0]["tables"][0]["kind"], "OTHER")
-
-    def test_scan_rejects_bad_paths(self):
-        rel = os.path.relpath(self.stmt, os.getcwd())
-        missing = os.path.join(self.out, "없음.xlsx")
-        txt = os.path.join(self.out, "a.txt")
-        with open(txt, "w") as fh:
-            fh.write("x")
-        st, body = self._post("/api/file/scan", {"paths": [rel, missing, txt, self.stmt]})
-        self.assertEqual(st, 200)
-        self.assertEqual([f["path"] for f in body["files"]], [self.stmt])
-        errs = {e["path"]: e["error"] for e in body["errors"]}
-        self.assertEqual(set(errs), {rel, missing, txt})
-        self.assertIn("절대 경로", errs[rel]); self.assertIn("찾을 수 없", errs[missing]); self.assertIn("xlsx", errs[txt])
-        self.assertEqual(self._status("/api/file/scan", {"paths": "notalist"}), 400)
-        self.assertEqual(self._status("/api/file/scan", {}), 400)
-
-    def test_file_endpoints_guard_origin(self):
-        for path, body in (("/api/file/scan", {"paths": [self.stmt]}), ("/api/file/build", {"cfg": {}}), ("/api/pick-files", {})):
-            self.assertEqual(self._status(path, body, {"Origin": "http://evil.example"}), 403)
-            self.assertEqual(self._status(path, body, raw_headers={"Content-Type": "text/plain"}), 403)
-
-    def test_pick_files_without_tkinter(self):
-        import sys
-        with mock.patch.dict(sys.modules, {"tkinter": None, "tkinter.filedialog": None}):
-            st, body = self._post("/api/pick-files", {})
-        self.assertEqual(st, 200); self.assertEqual(body["paths"], []); self.assertIn("파일 선택 창", body["error"])
-
-    def test_pick_files_returns_dialog_paths(self):
-        with mock.patch.object(SV, "_ask_open_filenames", return_value=(self.stmt, self.notes)):
-            st, body = self._post("/api/pick-files", {})
-        self.assertEqual(body, {"paths": [self.stmt, self.notes]})
-
-    def test_pick_files_timeout_releases_lock(self):
-        import threading
-        gate = threading.Event()
-        try:
-            with mock.patch.object(SV, "_ask_open_filenames", side_effect=lambda: (gate.wait(5), ())[1]), \
-                    mock.patch.object(SV, "PICK_TIMEOUT", 0.2):
-                st, body = self._post("/api/pick-files", {})
-            self.assertEqual(st, 200); self.assertEqual(body["paths"], []); self.assertIn("시간 초과", body["error"])
-            self.assertFalse(SV._pick_lock.locked())
-            # 시간 초과 뒤에도 창(스레드)이 살아 있으면 두 번째 요청은 새 창을 만들지 않는다
-            with mock.patch.object(SV, "_ask_open_filenames", return_value=(self.stmt,)) as ask:
-                st, body = self._post("/api/pick-files", {})
-            self.assertEqual(body["paths"], []); self.assertIn("이미 열려 있습니다", body["error"])
-            ask.assert_not_called()
-            self.assertFalse(SV._pick_lock.locked())
-        finally:
-            gate.set()
-            SV._pick_thread.join(5)
-        with mock.patch.object(SV, "_ask_open_filenames", return_value=(self.stmt,)):      # 창이 닫히면 다시 열린다
-            st, body = self._post("/api/pick-files", {})
-        self.assertEqual(body, {"paths": [self.stmt]})
-
-    def test_file_build_forces_file_corp_code(self):
-        seen = {}
-
-        def fake(cfg, log):
-            seen["cfg"] = cfg
-            return {"path": "q.xlsm", "verify": {"errors": 0, "checks": {"TRUE": 0, "FALSE": 0, "해당 없음": 0}, "false_cells": []}}
-        cfg = {"corp_code": "00126380", "corp_name": " 샘플전자 ", "as_of": "2026-10-27", "start_year": 2025, "end_year": 2025,
-               "include_half": False, "fs_divs": ["OFS"], "source": "dart",
-               "files": [{"path": self.stmt, "period_end": "2025-12-31", "kind": "annual", "fs_div": "OFS", "unit": None}]}
-        with mock.patch.object(SV, "run_file_build", side_effect=fake):
-            st, body = self._post("/api/file/build", {"cfg": cfg})
-            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/events/{body['job']}") as r:
-                r.read()
-        self.assertEqual(seen["cfg"]["corp_code"], "FILE:샘플전자"); self.assertEqual(seen["cfg"]["source"], "file")
-
-    def test_file_build_starts_job(self):
-        seen = {}
-
-        def fake(cfg, log):
-            seen["cfg"] = cfg; log("파일 하나")
-            return {"path": "q.xlsm", "verify": {"errors": 0, "checks": {"TRUE": 2, "FALSE": 0, "해당 없음": 0}, "false_cells": []}}
-        cfg = {"corp_code": "FILE:샘플전자", "corp_name": "샘플전자", "as_of": "2026-10-27", "start_year": 2024, "end_year": 2025,
-               "include_half": False, "fs_divs": ["OFS"], "unit_display": 0, "note_include": {},
-               "files": [{"path": self.stmt, "period_end": "2025-12-31", "kind": "annual", "fs_div": "OFS", "unit": None}], "layout": {}}
-        with mock.patch.object(SV, "run_file_build", side_effect=fake):
-            st, body = self._post("/api/file/build", {"cfg": cfg})
-            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/events/{body['job']}") as r:
-                text = r.read().decode("utf-8")
-        self.assertIn('"type": "log"', text); self.assertIn('"type": "done"', text); self.assertIn("q.xlsm", text)
-        self.assertEqual(seen["cfg"]["source"], "file"); self.assertEqual(seen["cfg"]["corp_name"], "샘플전자")
-        self.assertEqual(SV.P.BuildConfig.from_dict(seen["cfg"]).source, "file")
-
-    def test_file_build_rejects_relative_or_missing_paths(self):
-        base = {"corp_code": "FILE:x", "corp_name": "x", "as_of": "2026-10-27", "start_year": 2025, "end_year": 2025,
-                "include_half": False, "fs_divs": ["OFS"]}
-        with mock.patch.object(SV, "run_file_build") as rb:
-            self.assertEqual(self._status("/api/file/build", {"cfg": {**base, "files": [{"path": "stmt.xlsx", "period_end": "2025-12-31"}]}}), 400)
-            self.assertEqual(self._status("/api/file/build", {"cfg": {**base, "files": []}}), 400)
-            self.assertEqual(self._status("/api/file/build", {"cfg": {**base, "files": [{"path": os.path.join(self.out, "없음.xlsx"), "period_end": "2025-12-31"}]}}), 400)
-            self.assertEqual(self._status("/api/file/build", {"cfg": {**base, "files": [{"path": self.stmt}]}}), 400)   # 결산일 없음
-            rb.assert_not_called()
-
-    def test_ui_v2_has_file_tab(self):
+    def test_ui_v2_has_no_file_tab(self):
         with open(os.path.join(SV.HERE, "web", "index_v2.html"), encoding="utf-8") as fh:
             html = fh.read()
-        for s in ('data-tab="file"', 'id="tab-file"', "/api/file/scan", "/api/file/build", "/api/pick-files"):
-            self.assertTrue(s in html, f"index_v2.html 에 {s} 없음")
+        for s in ('data-tab="file"', 'id="tab-file"', "/api/file/", "/api/pick-files", "파일로 생성"):
+            self.assertNotIn(s, html)
         self.assertEqual(html.count("<script>"), html.count("</script>"))
 
 

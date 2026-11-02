@@ -418,11 +418,6 @@ CHECK_NOTE = ("주석 표는 항목별 천원 반올림으로 공시되어 재�
               "검증 시트의 FALSE(파란 글자)는 차이(원) 열로 원인을 확인하세요 — 허용폭 없이 그대로 표시합니다.")
 
 
-FILE_CODE_TEXT = "파일 입력"                         # 설정 corp_code 행(파일 입력일 때)
-FILES_LABEL = "입력 파일"
-FILES_NOTE = "경로는 설정 JSON 에 저장됨 — [업데이트] 때 다시 읽음"
-
-
 def _settings_sheet(col, python_path, script_path, unit=None):
     s = Sheet("설정", is_data=False)
     cfg = col.cfg
@@ -430,15 +425,11 @@ def _settings_sheet(col, python_path, script_path, unit=None):
     js = cfg.to_dict()
     if uauto:
         js["unit_judged"] = uval                    # 업데이트 때 셀이 이 값 그대로면 자동(다시 판정), 다르면 직접 선택
-    file_src = getattr(cfg, "source", "dart") == "file"
-    rows = [("회사", cfg.corp_name, None), ("corp_code", FILE_CODE_TEXT if file_src else cfg.corp_code, None),
-            ("기준일", cfg.as_of, None),
+    rows = [("회사", cfg.corp_name, None), ("corp_code", cfg.corp_code, None), ("기준일", cfg.as_of, None),
             ("연도 범위", f"{cfg.start_year}~{cfg.end_year}", None),
             ("반기 포함", "예" if cfg.include_half else "아니오", None),
-            ("연결/별도", ", ".join(_fs_name(d) for d in cfg.fs_divs), None)]
-    if file_src:                                    # 파일 입력만 — refresh 는 라벨로 행을 찾으므로 선택 행이어도 된다
-        rows.append((FILES_LABEL, "\n".join(str(d.get("path") or "") for d in cfg.files or []), None))
-    rows += [("mFS 표시 단위", uval, UNIT_NAME), ("단위 판정", utext, None), ("검증 안내", CHECK_NOTE, None),
+            ("연결/별도", ", ".join(_fs_name(d) for d in cfg.fs_divs), None),
+            ("mFS 표시 단위", uval, UNIT_NAME), ("단위 판정", utext, None), ("검증 안내", CHECK_NOTE, None),
             ("프리셋", cfg.preset, None),
             ("파이썬 경로", python_path, "cfg_python"), ("refresh.py 경로", script_path, "cfg_script"),
             ("마지막 갱신", date.today(), None), ("상태", "생성 완료", "cfg_status"),
@@ -450,9 +441,6 @@ def _settings_sheet(col, python_path, script_path, unit=None):
         r = 4 + i
         s.set(r, 2, k, "bold")
         s.set(r, 3, v, "date" if isinstance(v, date) else ("italic" if k == "검증 안내" else None))
-        if k == FILES_LABEL:
-            s.cells[(r, 3)].fmt = "wrap"            # 경로 한 줄에 하나
-            s.set(r, 4, FILES_NOTE, "italic")
         if name:
             s.names[name] = f"C{r}"
         if name == UNIT_NAME:                       # 목록(1·1000·1000000) + 오른쪽에 단위 글자
@@ -830,24 +818,12 @@ def _log_sheet(col, warnings):
             s.set(r, c, h, "hdr")
         r += 1
 
-    reps = sorted(col.plan.reports.values(), key=lambda x: (x.period_end, x.rcept_no))
-    file_src = bool(reps) and all(rep.rtype == "파일" for rep in reps)
-    if file_src:                                    # 파일 입력: 접수번호·정정 대신 시트(표)·수정일·단위
-        meta = getattr(col.plan, "file_meta", None) or {}
-        section("보고서", ["기간말", "파일", "시트(표)", "수정일", "단위"])
-        for rep in reps:
-            m = meta.get(rep.rcept_no, {})
-            for c, v in enumerate([rep.period_end, rep.report_nm, ", ".join(m.get("sheets", [])), rep.rcept_dt,
-                                   m.get("unit", "")], 1):
-                s.set(r, c, v, "date" if isinstance(v, date) else None)
-            r += 1
-    else:
-        section("보고서", ["기간말", "보고서", "rcept_no", "접수일", "정정", "대체된 접수번호"])
-        for rep in reps:
-            for c, v in enumerate([rep.period_end, rep.report_nm, rep.rcept_no, rep.rcept_dt,
-                                   "정정" if rep.corrected else "", ", ".join(rep.superseded)], 1):
-                s.set(r, c, v, "date" if isinstance(v, date) else None)
-            r += 1
+    section("보고서", ["기간말", "보고서", "rcept_no", "접수일", "정정", "대체된 접수번호"])
+    for rep in sorted(col.plan.reports.values(), key=lambda x: (x.period_end, x.rcept_no)):
+        for c, v in enumerate([rep.period_end, rep.report_nm, rep.rcept_no, rep.rcept_dt,
+                               "정정" if rep.corrected else "", ", ".join(rep.superseded)], 1):
+            s.set(r, c, v, "date" if isinstance(v, date) else None)
+        r += 1
     r += 1
     section("재작성 차이 (채택 = 다음 연도 보고서 전기 열)", ["기간", "항목", "채택", "원보고서", "채택 출처", "원보고서 출처"])
     for d in col.restate_diffs:
@@ -856,13 +832,12 @@ def _log_sheet(col, warnings):
             s.set(r, c, v, "num" if c in (3, 4) and isinstance(v, (int, float)) else None)
         r += 1
     r += 1
-    if not file_src:                                # 파일 입력엔 감사보고서가 없다
-        section("감사인·의견", ["기간말", "보고서", "구분", "rcept_no", "감사인", "의견 문장"])
-        for row in col.auditor_rows:
-            for c, v in enumerate(row, 1):
-                s.set(r, c, v)
-            r += 1
+    section("감사인·의견", ["기간말", "보고서", "구분", "rcept_no", "감사인", "의견 문장"])
+    for row in col.auditor_rows:
+        for c, v in enumerate(row, 1):
+            s.set(r, c, v)
         r += 1
+    r += 1
     s.set(r, 1, "메시지", "section"); r += 1
     for msg in list(col.logs) + list(OrderedDict.fromkeys(warnings)):
         s.set(r, 1, msg); r += 1

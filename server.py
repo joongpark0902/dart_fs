@@ -7,12 +7,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from core import config as CFG, mapping as M, pipeline as P, selector as SEL     # noqa: E402
-from core import file_collect as FC, normalize as N                               # noqa: E402
 from core.fetch import DartClient                                                 # noqa: E402
 from core.note_std import sheet_for                                               # noqa: E402
 from excel.build import build as run_build_impl                                   # noqa: E402
-
-FILE_EXTS = (".xlsx", ".xlsm", ".xls")
 
 PRESET_DIR = CFG.PRESET_DIR
 _client = None
@@ -47,145 +44,6 @@ def get_client():
 
 def run_build(cfg, log):
     return run_build_impl(cfg, log, client=get_client())
-
-
-def run_file_build(cfg, log):
-    """파일 입력 생성: DART 클라이언트·인증키 없이 build.build(source=file)."""
-    return run_build_impl(cfg, log)
-
-
-# ---------------------------------------------------------------- 파일 입력(F4)
-
-class BadRequest(ValueError):
-    pass
-
-
-def _check_input_path(p):
-    """입력 엑셀 경로 검사 → 오류 문구(없으면 None). 절대 경로·존재·확장자만 본다(파일 내용은 읽지 않는다)."""
-    p = str(p or "").strip()
-    if not p:
-        return "경로가 비어 있습니다"
-    if not os.path.isabs(p):
-        return "절대 경로만 받습니다"
-    if not os.path.isfile(p):
-        return "파일을 찾을 수 없습니다"
-    ext = os.path.splitext(p)[1].lower()
-    if ext not in FILE_EXTS:
-        return "xlsx·xlsm 파일만 받습니다"
-    if ext == ".xls":
-        return "xls 는 아직 지원하지 않습니다 — Excel 에서 xlsx 로 저장한 뒤 넣어 주세요"
-    return None
-
-
-def _file_scan_json(body):
-    """POST /api/file/scan {paths:[…]} 또는 {files:[{path, period_end?, kind?, fs_div?, unit?}], layout?}
-    → {files:[preview…], errors:[{path, error}]}. 같은 파일명이 둘이면 key_base 를 'a.xlsx#2' 로(collect_files 와 같은 규칙)."""
-    files = body.get("files")
-    if files is None:
-        paths = body.get("paths")
-        if not isinstance(paths, list):
-            raise BadRequest("paths 또는 files 목록이 필요합니다")
-        files = [{"path": p} for p in paths]
-    if not isinstance(files, list) or not all(isinstance(d, dict) for d in files):
-        raise BadRequest("files 는 {path, …} 목록이어야 합니다")
-    layout = body.get("layout") or {}
-    if not isinstance(layout, dict):
-        raise BadRequest("layout 은 사전이어야 합니다")
-    mapping = M.load()
-    out, errors, seen = [], [], {}
-    for d in files:
-        path = str(d.get("path") or "").strip()
-        err = _check_input_path(path)
-        if err:
-            errors.append({"path": path, "error": err})
-            continue
-        base = os.path.basename(path)
-        n = seen[base] = seen.get(base, 0) + 1
-        key_base = base + (f"#{n}" if n > 1 else "")
-        try:
-            out.append(FC.preview(path, period_end=d.get("period_end") or None, kind=d.get("kind") or None,
-                                  fs_div=d.get("fs_div") or "OFS", unit=d.get("unit"), key_base=key_base, layout=layout, mapping=mapping))
-        except Exception as e:     # noqa: BLE001 — 파일 내용은 담지 않는다
-            errors.append({"path": path, "error": f"읽지 못함: {type(e).__name__}: {str(e)[:200]}"})
-    return {"files": out, "errors": errors}
-
-
-def _check_file_cfg(cfg):
-    """POST /api/file/build 의 cfg 검사(job 시작 전): source=file, 회사명, 파일 목록(절대 경로·존재·결산일)."""
-    if not isinstance(cfg, dict):
-        raise BadRequest("cfg 가 필요합니다")
-    cfg = dict(cfg)
-    cfg["source"] = "file"
-    name = str(cfg.get("corp_name") or "").strip()
-    if not name:
-        raise BadRequest("회사명을 입력하세요")
-    cfg["corp_name"] = name
-    cfg["corp_code"] = "FILE:" + name          # 클라이언트 corp_code 는 받지 않는다(DART 코드로 오인 방지)
-    files = cfg.get("files")
-    if not isinstance(files, list) or not files:
-        raise BadRequest("입력 파일이 없습니다")
-    for d in files:
-        if not isinstance(d, dict):
-            raise BadRequest("files 항목은 {path, period_end, …} 이어야 합니다")
-        err = _check_input_path(d.get("path"))
-        if err:
-            raise BadRequest(f"{os.path.basename(str(d.get('path') or ''))}: {err}")
-        pe = str(d.get("period_end") or "")[:10]
-        try:
-            datetime.date.fromisoformat(pe)
-        except ValueError:
-            raise BadRequest(f"{os.path.basename(str(d['path']))}: 결산일을 입력하세요") from None
-        if d.get("kind") not in (None, "", "annual", "half"):
-            raise BadRequest(f"{os.path.basename(str(d['path']))}: 연간/반기 값이 잘못됐습니다")
-    return cfg
-
-
-_pick_lock = threading.Lock()
-_pick_thread = None     # 마지막 파일 선택 창 스레드 — 시간 초과 뒤에도 창이 살아 있으면 새 Tk() 를 만들지 않는다
-PICK_TIMEOUT = 600      # 초. 창이 안 닫혀도 요청·잠금이 영원히 묶이지 않게
-
-
-def _ask_open_filenames():
-    """서버 PC 에서 tkinter 파일 선택 창(xlsx/xlsm/xls). 별도 스레드에서 부른다. 실패하면 예외."""
-    import tkinter as tk
-    from tkinter import filedialog
-    root = tk.Tk()
-    try:
-        root.withdraw()
-        root.attributes("-topmost", True)
-        root.update()
-        return filedialog.askopenfilenames(parent=root, title="재무제표 엑셀 선택",
-                                           filetypes=[("Excel 파일", "*.xlsx *.xlsm *.xls"), ("모든 파일", "*.*")])
-    finally:
-        root.destroy()
-
-
-def _pick_files():
-    """POST /api/pick-files → {paths:[…]} 또는 {paths:[], error:"…"}. tkinter·화면이 없어도 서버는 죽지 않는다."""
-    global _pick_thread
-    if not _pick_lock.acquire(blocking=False):
-        return {"paths": [], "error": "파일 선택 창이 이미 열려 있습니다"}
-    out = {"paths": []}
-
-    def run():
-        try:
-            paths = _ask_open_filenames() or ()
-            if isinstance(paths, str):
-                paths = [paths]
-            out["paths"] = [os.path.abspath(p) for p in paths if p]
-        except Exception as e:      # noqa: BLE001
-            out["error"] = f"파일 선택 창을 열 수 없습니다: {type(e).__name__}: {str(e)[:200]} — 경로를 직접 붙여 넣으세요"
-    try:
-        if _pick_thread is not None and _pick_thread.is_alive():      # 시간 초과된 이전 창이 아직 열려 있음
-            return {"paths": [], "error": "파일 선택 창이 이미 열려 있습니다 — 먼저 그 창을 닫거나 경로를 직접 붙여 넣으세요"}
-        t = _pick_thread = threading.Thread(target=run, daemon=True)
-        t.start()
-        t.join(timeout=PICK_TIMEOUT)
-        if t.is_alive():
-            return {"paths": [], "error": "파일 선택 창 응답이 없습니다(시간 초과) — 경로를 직접 붙여 넣으세요"}
-    finally:
-        _pick_lock.release()
-    return out
 
 
 def _job_start(target):
@@ -338,15 +196,7 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/toc":
                 return self._send(200, _toc_json(P.BuildConfig.from_dict(body)))
             if u.path == "/api/build":
-                cfg = dict(body, source="dart")       # 파일 입력은 /api/file/build 로만
-                return self._send(200, {"job": _job_start(lambda log: run_build(cfg, log))})
-            if u.path == "/api/file/scan":
-                return self._send(200, _file_scan_json(body))
-            if u.path == "/api/file/build":
-                cfg = _check_file_cfg(body.get("cfg") if "cfg" in body else body)
-                return self._send(200, {"job": _job_start(lambda log: run_file_build(cfg, log))})
-            if u.path == "/api/pick-files":
-                return self._send(200, _pick_files())
+                cfg = dict(body); return self._send(200, {"job": _job_start(lambda log: run_build(cfg, log))})
             if u.path == "/api/refresh":
                 wbp = body["workbook"]
                 def run(log):
@@ -375,8 +225,6 @@ class Handler(BaseHTTPRequestHandler):
                 subprocess.Popen(["explorer", d])
                 return self._send(200, {"ok": True})
             return self._send(404, {"error": "not found"})
-        except BadRequest as e:
-            return self._send(400, {"error": str(e)})
         except Exception as e:     # noqa: BLE001
             return self._send(500, {"error": str(e)})
 

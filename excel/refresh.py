@@ -8,11 +8,8 @@ Excel COM 을 못 쓸 때만 openpyxl 경로(run_closed_openpyxl)로 대신한�
 어느 경로든 먼저 backup_<mtime>_update.xlsm 백업을 만든다.
 사용자 Excel 은 절대 Quit 하지 않는다. 열린 경로의 저장은 사용자 몫(Ctrl+S).
 업데이트는 기준일을 오늘로, 끝 연도를 max(저장된 끝 연도, 올해)로 올려 새 공시를 받는다(시작 연도는 유지).
-파일 입력은 기간이 파일에서 오므로 끝 연도를 올리지 않는다(기준일만 오늘).
 표시 단위: 설정 JSON unit_display 0(자동)이고 cfg_unit 셀이 지난 판정값(unit_judged) 그대로면 다시 판정해 cfg_unit 을
 새로 쓰고, 셀을 바꿨거나 직접 선택(0 아님)이면 셀 값을 그대로 쓴다.
-파일 입력(설정 JSON source "file")은 DART 대신 files 의 엑셀을 다시 읽는다(api_key 불필요). 입력 파일이 없으면
-InputFileError — 데이터 시트는 쓰지 않고 COM 경로는 상태 셀에 기록(닫힌 파일은 그 상태로 저장), openpyxl 경로는 로그만.
 버튼으로 띄운 실행은 창이 보이지 않으므로 모든 로그·오류 추적을 통합문서 폴더의 dart_fs_update.log 에 덧붙인다.
 """
 import argparse, datetime as dt, json, os, shutil, sys, traceback
@@ -25,17 +22,12 @@ from core import config as CFG, mapping as M, pipeline as P      # noqa: E402
 from core.fetch import DartClient                                  # noqa: E402
 from excel import compose as C, finalize as FZ, write_com as WC  # noqa: E402
 from excel.write_com import blocks_from_columns                   # noqa: E402,F401
-from excel.build import BAS, REFRESH, check_input_files           # noqa: E402
-from core.file_collect import collect_files                       # noqa: E402
+from excel.build import BAS, REFRESH                              # noqa: E402
 
 MAPPING_USER_DIR = os.path.join(HERE, "mapping", "user")
 LOG_NAME = "dart_fs_update.log"
 XL_SECURITY_FORCE_DISABLE = 3          # msoAutomationSecurityForceDisable: 우리 인스턴스에서 매크로 실행 안 함
 _TRUE_STR = ("TRUE", "Y", "예", "1", "O")
-
-
-class InputFileError(RuntimeError):
-    """파일 입력 업데이트: 입력 파일이 없음 — 데이터 시트는 건드리지 않고 상태 셀에만 기록한다."""
 
 
 def backup(path):
@@ -131,11 +123,14 @@ def _collect_for(reader, log):
     if not cfg_json:
         raise RuntimeError("설정 시트의 '설정 JSON' 을 찾지 못함")
     cfg_dict = json.loads(cfg_json)
+    src = (cfg_dict or {}).get("source") or "dart"
+    if src != "dart":                     # 예전 '파일로 생성' 산출물(source=file) — 기능 보류로 업데이트 불가
+        raise RuntimeError(f"이 통합문서는 DART 가 아닌 입력(source={src})으로 만들어져 업데이트할 수 없습니다 — "
+                           "회사 제시 엑셀 입력 기능은 보류되었습니다")
     cfg = P.BuildConfig.from_dict(cfg_dict)
     today = dt.date.today()               # 새 공시를 받도록 기준일·끝 연도를 올린다(시작 연도 유지)
     cfg.as_of = today
-    if cfg.source != "file":              # 파일 입력의 기간은 파일에서 온다 — 끝 연도는 그대로
-        cfg.end_year = max(cfg.end_year, today.year)
+    cfg.end_year = max(cfg.end_year, today.year)
     log(f"업데이트 기준일 {cfg.as_of.isoformat()}, 연도 {cfg.start_year}~{cfg.end_year}")
     cfg.unit_display = resolve_unit(cfg_dict, _setting(settings, "mFS 표시 단위"))
     log("표시 단위: 자동(공시 단위 다시 판정)" if cfg.unit_display == 0 else f"표시 단위: 직접 선택 {cfg.unit_display}")
@@ -151,13 +146,6 @@ def _collect_for(reader, log):
         mapping = M.load()
         log("매핑표 시트가 없거나 비어 있어 기본 매핑 사용")
     conf = CFG.load()
-    if cfg.source == "file":                  # 회사 제시 엑셀을 다시 읽는다(api_key 불필요)
-        try:
-            check_input_files(cfg)
-        except RuntimeError as e:
-            raise InputFileError(str(e)) from e
-        log(f"파일 입력 {len(cfg.files)}개 다시 읽는 중…")
-        return cfg, collect_files(cfg, mapping, log), conf
     if not conf.get("api_key"):
         raise RuntimeError("config.txt 에 api_key 가 없습니다.")
     client = DartClient(conf["api_key"], CFG.CACHE_DIR, log)
@@ -219,10 +207,6 @@ def _status_text(res, tail, shifts=()):
             f"검증 TRUE {res['checks']['TRUE']} FALSE {res['checks']['FALSE']}{shift_tail(shifts)}{tail}")
 
 
-def input_error_text(e):
-    return f"업데이트 실패 {dt.datetime.now():%Y-%m-%d %H:%M}: {e} — 데이터 시트는 바뀌지 않았습니다"
-
-
 def set_status_com(wb, text):
     rng = wb.Names("cfg_status").RefersToRange
     FZ._retry(lambda: setattr(rng, "Value2", "'" + text))
@@ -244,14 +228,7 @@ def _refresh_workbook(app, wb, log, save):
         calc0 = WC.XL_CALC_AUTOMATIC
     try:
         existing = FZ._retry(lambda: WC.read_existing(wb))
-        try:
-            cfg, col, conf = _collect_for(_com_reader(wb), log)
-        except InputFileError as e:
-            # 아직 아무 시트도 쓰지 않았다 → 상태 셀만 기록. 닫힌 파일(우리 인스턴스)은 그 상태로 저장해 다음에 열면 보이게.
-            set_status_com(wb, input_error_text(e))
-            if save:
-                FZ._retry(wb.Save)
-            raise
+        cfg, col, conf = _collect_for(_com_reader(wb), log)
         model = C.compose(col, existing, conf["python"], REFRESH)
         for w in model.shift_warnings:
             log(w)
@@ -461,7 +438,7 @@ def main(argv=None):
                 fh.write(tb)
             except OSError:
                 pass
-        if wb is not None and not isinstance(e, InputFileError):     # 입력 파일 없음은 _refresh_workbook 이 기록함
+        if wb is not None:
             try:
                 set_status_com(wb, f"업데이트 실패: {e} — 저장하지 말고 닫으세요(백업: {bk}, 로그: {log_path})")
             except Exception:    # noqa: BLE001

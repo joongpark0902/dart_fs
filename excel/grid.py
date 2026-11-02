@@ -1,6 +1,6 @@
 """엑셀 쓰기 전 중간 모델. writer(openpyxl/COM)가 이것만 본다.
 
-Cell.fmt ∈ {"title","section","hdr","unit","num","text","bold","italic","flag","date","check","input","wrap"} 또는 None.
+Cell.fmt ∈ {"title","section","hdr","unit","num","text","bold","italic","flag","date","check","input"} 또는 None.
 "input" = 사용자 입력 칸(연노랑 FFFFCC 채움 + 사방 점선 테두리, 글꼴·숫자 서식은 보통 셀과 같음).
 Cell.border ∈ {None,"top","bottom","both"}: 가는 실선. "hdr" 셀은 border 가 None 이면 위·아래 둘 다(한 줄 머리글).
 값이 normalize.Percent 면 writer 가 0.0% 서식을 입힌다.

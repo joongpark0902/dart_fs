@@ -22,8 +22,7 @@ XL_CELL_VALUE, XL_EQUAL = 1, 3
 _ADDR_MAX = 240                # Range("A1,B2,...") 주소 문자열 한도(255) 여유
 # 한국어 Excel 일부 설치본은 .NumberFormat 도 로컬 토큰만 받는다([Red]·General 거부, 실측) → 로컬 토큰으로 폴백.
 _LOCAL_TOKENS = (("[Red]", "[빨강]"), ("General", "G/표준"))
-_STYLE_ORDER = ("title", "section", "bold", "hdr", "italic", "unit", "flag", "date", "check", "pct", "input", "wrap")
-XL_VTOP = -4160
+_STYLE_ORDER = ("title", "section", "bold", "hdr", "italic", "unit", "flag", "date", "check", "pct", "input")
 INPUT_FILL_COLOR = 0xCCFFFF    # RGB FFFFCC(연노랑) → COM BGR = 13434879 (ColorIndex 19)
 XL_EDGE_LEFT, XL_EDGE_RIGHT, XL_DOT = 7, 10, -4118
 # COM 으로 'yyyy-mm-dd' 를 쓰면 한국어 Excel 이 시스템 간단한 날짜(기본 서식 14)로 바꿔 저장한다(실측:
@@ -198,9 +197,6 @@ def _apply_style(rng, key):
         rng.HorizontalAlignment = XL_CENTER
     elif key == "pct":
         set_number_format(rng, PCT_FMT)
-    elif key == "wrap":                         # openpyxl: Alignment(wrap_text, vertical top)
-        rng.WrapText = True
-        rng.VerticalAlignment = XL_VTOP
     elif key == "input":                        # openpyxl: PatternFill solid FFFFCC + Side dotted 사방
         rng.Interior.Color = INPUT_FILL_COLOR
         for edge in (XL_EDGE_LEFT, XL_EDGE_TOP, XL_EDGE_BOTTOM, XL_EDGE_RIGHT):

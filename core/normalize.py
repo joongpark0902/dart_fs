@@ -87,11 +87,6 @@ def parse_unit(s):
     return _UNIT_WORDS.get(word)
 
 
-def unit_multiplier(word):
-    """단위 낱말 '천원'·'백만 원' → 배수. 단위 낱말이 아니면 None."""
-    return _UNIT_WORDS.get(compact(word))
-
-
 _COL_UNIT = re.compile(r"\(\s*(?:단위\s*[:：]?\s*)?([^()]{1,8}?)\s*\)")
 
 

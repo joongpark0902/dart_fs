@@ -22,14 +22,10 @@ class BuildConfig:
     unit_display: int = 0            # 0 = 자동(공시 단위 판정) | 1·1000·1000000 = 직접 선택
     note_include: object = None      # None=전부 | {"recommended": True} | {title_norm: bool}
     preset: str = "default"
-    source: str = "dart"             # "dart" | "file"(회사 제시 엑셀, corp_code 는 "FILE:<회사명>")
-    files: list = None               # 파일 입력: [{path, period_end("YYYY-MM-DD"), kind("annual"|"half"), fs_div, unit}]
-    layout: dict = None              # 파일 입력: {"<파일명>|<시트>|<표번호>": {kind, header_row, label_cols, periods, unit}}
 
     def to_dict(self):
         d = asdict(self)
         d["as_of"] = self.as_of.isoformat()
-        d["files"] = _files_of(self.files)        # 결산일 date → ISO 문자열(JSON 직렬화)
         return d
 
     @staticmethod
@@ -40,22 +36,7 @@ class BuildConfig:
         as_of = date.fromisoformat(as_of) if isinstance(as_of, str) else as_of
         return BuildConfig(d["corp_code"], d.get("corp_name", ""), as_of, int(d["start_year"]), int(d["end_year"]),
                            bool(d.get("include_half", False)), list(d.get("fs_divs") or ["OFS"]),
-                           _unit_of(d.get("unit_display")), d.get("note_include"), d.get("preset") or "default",
-                           d.get("source") or "dart", _files_of(d.get("files")), d.get("layout") or None)
-
-
-def _files_of(files):
-    """설정의 입력 파일 목록: 결산일은 ISO 문자열로 통일(JSON 왕복), 없으면 None."""
-    if not files:
-        return None
-    out = []
-    for f in files:
-        f = dict(f)
-        pe = f.get("period_end")
-        if isinstance(pe, date):
-            f["period_end"] = pe.isoformat()
-        out.append(f)
-    return out
+                           _unit_of(d.get("unit_display")), d.get("note_include"), d.get("preset") or "default")
 
 
 def _unit_of(v):
